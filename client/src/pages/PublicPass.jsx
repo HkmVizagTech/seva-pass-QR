@@ -60,7 +60,7 @@ export default function PublicPass() {
           )}
 
           <div className="public-qr">
-            <img src={pass.qr_svg} alt="Pass QR code" />
+            <img src={pass.qr_image || pass.qr_svg} alt="Pass QR code" />
           </div>
 
           <div className="public-footer">

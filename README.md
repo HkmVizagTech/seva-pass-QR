@@ -11,14 +11,14 @@ A web app for devotees to issue QR entry passes to donors/invitees, validate the
 - Devotee login (JWT auth, seeded default admin)
 - **Per-devotee quota** — each devotee can hold a limited number of non-revoked passes (default 30, configurable per user by admin; env: `DEVOTEE_DEFAULT_QUOTA`)
 - Issue QR entry passes for donors/invitees (name, phone, email, pass type, event, validity)
-- Pass types: General, VIP, Donor, Volunteer, Staff, Media (mapped to the main system's VIP/Donor/General categories when integrated)
+- Pass types: General, VIP, Donor, Volunteer, Staff, Media
 - Events management
 - QR encodes a URL (`/pass?t=<token>`) — any phone camera opens a printable pass card
 - In-app camera scanner validates a pass and records check-in time
 - Pass list with search/filter, manual check-in, revoke, and PNG download
 - Dashboard stats (total / unused / checked-in / revoked / today / events / my quota)
 - Public pass card page (no login) that also prints as the physical pass
-- **Main-system integration (optional)** — pull QRs from the Hare Krishna Visakhapatnam Prasadam Distribution system and sync check-ins back; works standalone until the main system endpoints are live
+- **Main-system integration (optional)** — pull QRs from the main ISKCON Seva Pass system (`HkmVizagTech/iskcon-seva-pass-backend`) via its third-party integration API; works standalone until configured
 - **WhatsApp QR delivery** (stub + API endpoint ready — enable by adding Meta credentials, see below)
 
 ## Requirements
@@ -117,7 +117,7 @@ server/
     stats.js            dashboard stats
   services/
     whatsapp.js         WhatsApp Business Cloud API client (stub until configured)
-    mainSystem.js       Main-system integration client (claim/consume QR by phone)
+    mainSystem.js       Main-system integration client (claim QR by phone)
   scripts/
     smoke-test.mjs      API test suite against in-memory MongoDB
 client/
@@ -151,38 +151,48 @@ client/
 ## Main-system integration
 
 This app is the devotee-facing layer for **Hare Krishna Visakhapatnam**. The QR passes
-issued here can be backed by the main **Prasadam Distribution system**
-(`HkmVizagTech/QRsystembackend` + `QRsystemfrontend` — kept as reference, not modified).
+issued here can be backed by the main **ISKCON Seva Pass system**
+(`HkmVizagTech/iskcon-seva-pass-backend` — with its admin dashboard and the
+`HkmVizagTech/iskcon-scanner` volunteer scanner at the gate).
 
 - **Standalone mode (default):** `MAIN_SYSTEM_API_URL` is unset → this app generates and
   validates its own QRs, exactly as before.
-- **Integrated mode:** set `MAIN_SYSTEM_API_URL` (and optionally `MAIN_SYSTEM_API_KEY`) in
-  `server/.env`. Then issuing a pass claims a QR from the main system by the invitee's phone
-  number, and scanning at the gate syncs the check-in back to the main system
-  (`Recipient.isConsumed`), so both systems agree on who entered.
-- Devotee quota still applies in both modes.
+- **Integrated mode:** set `MAIN_SYSTEM_API_URL` (+ `MAIN_SYSTEM_API_KEY` and
+  `MAIN_SYSTEM_EVENT_ID`) in `server/.env`. Then issuing a pass claims a QR from the main
+  system by the invitee's phone number, and the pass card shows the main system's QR image —
+  the gate scanner (`iskcon-scanner`) validates it there. Devotee quota still applies.
+- The main system's integration API is **already implemented** in
+  `iskcon-seva-pass-backend` — no endpoint work needed on that side, just config:
+  set `INTEGRATION_API_KEY` there and deploy it.
 
-### Main-system API contract
-
-The main system (a separate project you own) needs these two endpoints for integration:
+### Main-system API contract (already implemented on the main system)
 
 | Endpoint | Request | Response |
 | -------- | ------- | -------- |
-| `POST /api/recipients/claim` | `{ phone, name, category }` — find-or-create the recipient by phone and ensure a QR token | `{ recipientId, qrToken, qrContent, qrSvg, category, created }` |
-| `POST /api/recipients/consume` | `{ qrToken }` — mark the QR used at the gate (idempotent) | `{ recipientId, qrToken, alreadyConsumed }` |
+| `POST /api/integration/generate-volunteer-qr` | Header `x-api-key: <INTEGRATION_API_KEY>`; body `{ event_id, user_phone_number, user_email? }` — find-or-create the holder by phone and return its QR | `{ status: true, message, qr_code: <base64 PNG data URL>, qr_id }` |
 
-Notes for the main-system side:
-- `category` should be one of `VIP | Donor | General` (unknown → `General`).
-- QR images: the app renders from `qrContent` (defaults to the `qrToken`) or `qrSvg` if provided.
-- Optional shared-secret guard: require header `x-api-key: <MAIN_API_KEY>` on those routes when the
-  env var is set; this app sends it when `MAIN_SYSTEM_API_KEY` is configured.
-- The main system's own frontend scanner is currently mocked — the `consume` endpoint is the
-  natural place for the gate validation to point at.
+Notes:
+- `event_id` is matched against the main system's `Event.eventCode` (or `_id`) — this app
+  sends `MAIN_SYSTEM_EVENT_ID`.
+- The main system's QR is a signed JWT whose payload carries the QR id (`q`). Its gate also
+  accepts a bare QR id, so this app's fallback rendering (and its own scanner matching)
+  both work with the QR id alone.
+- Gate validation is the main system's job (its `iskcon-scanner` + `/api/scan`); Seva Pass
+  check-in is local only — there is no third-party "consume" endpoint on the main system.
+- Errors come back as `{ status: false, message }` with a 4xx/5xx status.
+
+### Env vars for integration
+
+```env
+MAIN_SYSTEM_API_URL=https://your-main-backend.example.com
+MAIN_SYSTEM_API_KEY=<the main system's INTEGRATION_API_KEY>
+MAIN_SYSTEM_EVENT_ID=EVT2026   # eventCode of the event to issue against
+```
 
 ## Workflow
 
 1. Devotee logs in and creates an event (optional but recommended).
 2. Devotee issues a pass within their quota — a QR is generated instantly (or claimed from the main system); download the PNG, print the pass card (`/pass?t=<token>`), or later send it straight to the donor's WhatsApp.
 3. The donor scans the QR with any phone camera to see their pass card.
-4. At the venue, a devotee opens **Scan & Validate**, points the camera at the QR (or pastes the code), and the pass is checked in with the timestamp — and synced back to the main system when integrated.
+4. At the venue, the main system's own scanner (`iskcon-scanner`) validates the QR at the gate; in this app, **Scan & Validate** also works for local passes and records the check-in timestamp.
 5. When a pass is no longer needed, revoke it to free up quota for a new pass.

@@ -129,7 +129,7 @@ export default function IssuePass() {
           {created ? (
             <div className="pass-card">
               <div className="pass-card-qr">
-                <img src={created.qr_svg} alt={`QR pass for ${created.donor_name}`} />
+                <img src={created.qr_image || created.qr_svg} alt={`QR pass for ${created.donor_name}`} />
               </div>
               <div className="pass-card-details">
                 <div className="pass-card-name">{created.donor_name}</div>
@@ -148,7 +148,7 @@ export default function IssuePass() {
                 </a>
               </div>
               {created.source === 'main-system' && (
-                <p className="sub">QR claimed from the main Prasadam system · token {created.qr_token.slice(0, 8)}…</p>
+                <p className="sub">QR issued by the main ISKCON pass system · id {created.main_qr_id}</p>
               )}
             </div>
           ) : (

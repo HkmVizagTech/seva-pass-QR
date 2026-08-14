@@ -1,7 +1,9 @@
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import { spawn } from 'node:child_process';
+import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import jwt from 'jsonwebtoken';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BASE = 'http://localhost:4000';
@@ -28,35 +30,79 @@ function assert(cond, msg) {
   console.log(`ok: ${msg}`);
 }
 
+async function waitForServer(tries = 30) {
+  for (let i = 0; i < tries; i++) {
+    await new Promise((r) => setTimeout(r, 1000));
+    try {
+      const h = await req('GET', '/api/health');
+      if (h.status === 200) return true;
+    } catch {}
+  }
+  return false;
+}
+
+// ─── Stub of the real main system (HkmVizagTech/iskcon-seva-pass-backend) ───
+// POST /api/integration/generate-volunteer-qr — same contract, deterministic QR id.
+function startMainStub() {
+  return new Promise((resolve) => {
+    const server = http.createServer((req, res) => {
+      let body = '';
+      req.on('data', (c) => (body += c));
+      req.on('end', () => {
+        const send = (status, obj) => {
+          res.writeHead(status, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(obj));
+        };
+        if (req.url !== '/api/integration/generate-volunteer-qr' || req.method !== 'POST') {
+          return send(404, { status: false, message: 'Not found' });
+        }
+        if (req.headers['x-api-key'] !== 'test-integration-key') {
+          return send(401, { status: false, message: 'Invalid API key' });
+        }
+        let parsed;
+        try {
+          parsed = JSON.parse(body || '{}');
+        } catch {
+          return send(400, { status: false, message: 'Invalid JSON' });
+        }
+        if (!parsed.event_id || !parsed.user_phone_number) {
+          return send(400, { status: false, message: 'event_id and user_phone_number are required' });
+        }
+        const digits = String(parsed.user_phone_number).replace(/\D/g, '');
+        const qrId = `ISK-EVT26-GN-${digits.slice(-4)}01`;
+        send(200, {
+          status: true,
+          message: 'QR code generated successfully',
+          qr_code:
+            'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+          qr_id: qrId,
+        });
+      });
+    });
+    server.listen(4099, () => resolve(server));
+  });
+}
+
 const mongod = await MongoMemoryServer.create();
 process.env.MONGODB_URI = mongod.getUri('seva_pass_test');
 process.env.PORT = '4000';
-// Force standalone mode regardless of server/.env so the test does not
-// depend on a running main system (empty values keep dotenv from
-// re-loading them from server/.env).
+// Phase A: force standalone mode regardless of server/.env so the test does not
+// depend on a running main system (empty values keep dotenv from re-loading them).
 process.env.MAIN_SYSTEM_API_URL = '';
 process.env.MAIN_SYSTEM_API_KEY = '';
+process.env.MAIN_SYSTEM_EVENT_ID = '';
 
-const child = spawn('node', ['index.js'], {
+let child = spawn('node', ['index.js'], {
   cwd: path.join(__dirname, '..'),
   env: process.env,
   stdio: ['ignore', 'inherit', 'inherit'],
 });
 
-let up = false;
-for (let i = 0; i < 30; i++) {
-  await new Promise((r) => setTimeout(r, 1000));
-  try {
-    const h = await req('GET', '/api/health');
-    if (h.status === 200) {
-      up = true;
-      break;
-    }
-  } catch {}
-}
-assert(up, 'server started (health check)');
+let stub = null;
 
 try {
+  assert(await waitForServer(), 'server started (health check)');
+
   const login = await req('POST', '/api/auth/login', { body: { username: 'admin', password: 'admin123' } });
   assert(login.status === 200 && login.data.token, 'default admin login works');
   const token = login.data.token;
@@ -179,12 +225,73 @@ try {
   const notFound = await req('GET', '/api/public/passes/nonexistent');
   assert(notFound.status === 404, 'unknown pass token → 404');
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Phase B: integrated mode against the stub of the real main system
+  // (POST /api/integration/generate-volunteer-qr)
+  // ─────────────────────────────────────────────────────────────────────────
+  child.kill();
+  await new Promise((r) => setTimeout(r, 800));
+  stub = await startMainStub();
+
+  process.env.MAIN_SYSTEM_API_URL = 'http://localhost:4099';
+  process.env.MAIN_SYSTEM_API_KEY = 'test-integration-key';
+  process.env.MAIN_SYSTEM_EVENT_ID = 'EVT26';
+  child = spawn('node', ['index.js'], {
+    cwd: path.join(__dirname, '..'),
+    env: process.env,
+    stdio: ['ignore', 'inherit', 'inherit'],
+  });
+  assert(await waitForServer(), 'integrated server started (health check)');
+
+  const login2 = await req('POST', '/api/auth/login', { body: { username: 'admin', password: 'admin123' } });
+  const token2b = login2.data.token;
+
+  // Issue without a phone → rejected (phone is how the main system finds the holder)
+  const noPhone = await req('POST', '/api/passes', { token: token2b, body: { donor_name: 'No Phone' } });
+  assert(noPhone.status === 400, 'integrated mode requires a phone number to claim a QR');
+
+  const msPass = await req('POST', '/api/passes', {
+    token: token2b,
+    body: { donor_name: 'Radha Raman', phone: '+91 9123456780', email: 'rr@example.com' },
+  });
+  assert(msPass.status === 201 && msPass.data.pass.source === 'main-system', 'pass claimed from main system');
+  assert(msPass.data.pass.main_qr_id === 'ISK-EVT26-GN-678001', 'main system QR id stored');
+  assert(msPass.data.pass.qr_image && msPass.data.pass.qr_image.startsWith('data:image/png;base64,'), 'main system QR image returned');
+  assert(msPass.data.pass.qr_content === 'ISK-EVT26-GN-678001', 'fallback QR content is the QR id');
+
+  // Check-in by scanning the bare QR id
+  const chkBare = await req('POST', `/api/passes/ISK-EVT26-GN-678001/check-in`, { token: token2b });
+  assert(chkBare.status === 200 && chkBare.data.pass.status === 'used', 'check-in matches bare QR id');
+
+  // Check-in by scanning a signed JWT (payload.q holds the QR id)
+  const msPass2 = await req('POST', '/api/passes', {
+    token: token2b,
+    body: { donor_name: 'Sita Devi', phone: '+91 9988123400' },
+  });
+  const qrId2 = msPass2.data.pass.main_qr_id;
+  const fakeJwt = jwt.sign({ q: qrId2, e: 'abc123', h: 'def456', n: 'Sita Devi' }, 'not-the-real-secret');
+  const chkJwt = await req('POST', `/api/passes/${fakeJwt}/check-in`, { token: token2b });
+  assert(chkJwt.status === 200 && chkJwt.data.pass.donor_name === 'Sita Devi' && chkJwt.data.pass.status === 'used', 'check-in decodes JWT payload q to match');
+
+  // Revoking a main-system pass works and frees quota as usual
+  const msRevoke = await req('POST', `/api/passes/${msPass.data.pass.id}/revoke`, { token: token2b });
+  assert(msRevoke.status === 200 && msRevoke.data.pass.status === 'revoked', 'main-system pass revocable');
+
+  // Public pass card exposes the main system image
+  const msPub = await req('GET', `/api/public/passes/${msPass.data.pass.token}`);
+  assert(msPub.status === 200 && msPub.data.pass.qr_image !== null, 'public card includes main-system QR image');
+
+  // PNG download serves the main system's image for integrated passes
+  const msPng = await fetch(`${BASE}/api/passes/${msPass.data.pass.id}/qr.png`, { headers: { Authorization: `Bearer ${token2b}` } });
+  assert(msPng.status === 200 && msPng.headers.get('content-type') === 'image/png', 'PNG download serves main-system image');
+
   console.log('\nALL SMOKE TESTS PASSED');
 } catch (e) {
   console.error('\nSMOKE TEST FAILED:', e.message);
   process.exitCode = 1;
 } finally {
-  child.kill();
+  try { child.kill(); } catch {}
+  if (stub) stub.close();
   await mongod.stop();
   process.exit(process.exitCode || 0);
 }

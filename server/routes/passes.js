@@ -1,11 +1,12 @@
-﻿import { Router } from 'express';
+import { Router } from 'express';
 import crypto from 'node:crypto';
 import mongoose from 'mongoose';
+import jwt from 'jsonwebtoken';
 import QRCode from 'qrcode';
 import Pass, { PASS_TYPES, PASS_STATUSES } from '../models/Pass.js';
 import User from '../models/User.js';
 import { isWhatsAppConfigured, sendPassQrWhatsApp } from '../services/whatsapp.js';
-import { isMainSystemConfigured, claimQr, consumeQr, toMainCategory, MainSystemError } from '../services/mainSystem.js';
+import { isMainSystemConfigured, claimQr, MainSystemError } from '../services/mainSystem.js';
 
 const router = Router();
 
@@ -30,6 +31,7 @@ function serializePass(doc) {
     source: doc.source || 'local',
     recipient_id: doc.recipient_id || null,
     qr_token: doc.qr_token || '',
+    main_qr_id: doc.qr_token || '',
     event_id: doc.event_id ? doc.event_id._id?.toString() || doc.event_id.toString() : null,
     event_name: doc.event_id?.name || null,
     issued_by: doc.issued_by ? doc.issued_by._id?.toString() || doc.issued_by.toString() : null,
@@ -41,8 +43,13 @@ function serializePass(doc) {
   };
 }
 
-async function serializePassWithQr(doc) {
-  return { ...serializePass(doc), qr_svg: await qrSvg(doc.qr_content) };
+// qr_image (the main system's own PNG) is only included when explicitly asked —
+// it is a large base64 blob and would bloat list responses.
+async function serializePassWithQr(doc, { includeImage = false } = {}) {
+  const base = serializePass(doc);
+  const extra = {};
+  if (includeImage && doc.main_qr_image) extra.qr_image = doc.main_qr_image;
+  return { ...base, ...extra, qr_svg: await qrSvg(doc.qr_content) };
 }
 
 async function loadPassById(id) {
@@ -53,13 +60,31 @@ function escapeRegex(text) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+// The main system's QR encodes a signed JWT whose payload carries the QR id
+// under key `q` (e.g. ISK-EVT26-GN-0000123). Their gate also accepts a bare
+// qrId. Decode the JWT (no secret needed to read the payload) so we can match
+// our stored pass; otherwise treat the scanned text as-is (our local token).
+function extractQrId(scanned) {
+  const s = String(scanned || '').trim();
+  const parts = s.split('.');
+  if (parts.length === 3 && parts[0] && parts[1] && parts[2]) {
+    try {
+      const payload = jwt.decode(s);
+      if (payload && payload.q) return String(payload.q);
+    } catch {
+      /* not a JWT — fall through */
+    }
+  }
+  return s;
+}
+
 router.get('/', wrap(async (req, res) => {
   const { q = '', status = '', event_id = '' } = req.query;
   const filter = {};
 
   if (q.trim()) {
     const rx = new RegExp(escapeRegex(q.trim()), 'i');
-    filter.$or = [{ donor_name: rx }, { phone: rx }, { email: rx }, { token: rx }];
+    filter.$or = [{ donor_name: rx }, { phone: rx }, { email: rx }, { token: rx }, { qr_token: rx }];
   }
   if (status && PASS_STATUSES.includes(status)) {
     filter.status = status;
@@ -123,6 +148,7 @@ router.post('/', wrap(async (req, res) => {
   let source = 'local';
   let recipientId = null;
   let qrToken = '';
+  let mainQrImage = '';
   let qrContent = origin ? `${origin}/pass?t=${token}` : token;
 
   if (isMainSystemConfigured()) {
@@ -130,11 +156,14 @@ router.post('/', wrap(async (req, res) => {
       return res.status(400).json({ error: 'Phone number is required to claim a QR from the main system' });
     }
     try {
-      const claimed = await claimQr({ phone: phone.trim(), name: donor_name.trim(), category: toMainCategory(pass_type) });
+      const claimed = await claimQr({ phone: phone.trim(), name: donor_name.trim(), email: email.trim() });
       source = 'main-system';
-      recipientId = claimed.recipientId || null;
-      qrToken = claimed.qrToken || '';
-      qrContent = claimed.qrContent || qrToken || qrContent;
+      recipientId = claimed.qrId || null;
+      qrToken = claimed.qrId || '';
+      mainQrImage = claimed.qrImage || '';
+      // The main system's gate also accepts a bare QR id, so the fallback QR
+      // content (used if the image is missing) is the id itself.
+      qrContent = claimed.qrId || qrContent;
     } catch (err) {
       if (err instanceof MainSystemError) {
         return res.status(err.status || 502).json({ error: `Main system: ${err.message}` });
@@ -154,13 +183,14 @@ router.post('/', wrap(async (req, res) => {
     source,
     recipient_id: recipientId,
     qr_token: qrToken,
+    main_qr_image: mainQrImage,
     event_id: event_id || null,
     issued_by: req.user.id,
     valid_from: valid_from || null,
     valid_until: valid_until || null,
   });
 
-  res.status(201).json({ pass: await serializePassWithQr(await loadPassById(pass._id)) });
+  res.status(201).json({ pass: await serializePassWithQr(await loadPassById(pass._id), { includeImage: true }) });
 }));
 
 router.get('/:id/qr.png', wrap(async (req, res) => {
@@ -168,9 +198,15 @@ router.get('/:id/qr.png', wrap(async (req, res) => {
   if (!pass) {
     return res.status(404).json({ error: 'Pass not found' });
   }
+  res.setHeader('Content-Disposition', `attachment; filename="pass-${pass.token.slice(0, 8)}.png"`);
+  // Main-system passes: hand back the main system's own QR image.
+  if (pass.main_qr_image) {
+    const base64 = String(pass.main_qr_image).replace(/^data:image\/\w+;base64,/, '');
+    res.setHeader('Content-Type', 'image/png');
+    return res.send(Buffer.from(base64, 'base64'));
+  }
   const buf = await QRCode.toBuffer(pass.qr_content, { type: 'png', margin: 1, width: 600 });
   res.setHeader('Content-Type', 'image/png');
-  res.setHeader('Content-Disposition', `attachment; filename="pass-${pass.token.slice(0, 8)}.png"`);
   res.send(buf);
 }));
 
@@ -179,7 +215,7 @@ router.get('/:id', wrap(async (req, res) => {
   if (!pass) {
     return res.status(404).json({ error: 'Pass not found' });
   }
-  res.json({ pass: await serializePassWithQr(pass) });
+  res.json({ pass: await serializePassWithQr(pass, { includeImage: true }) });
 }));
 
 router.post('/:id/send-whatsapp', wrap(async (req, res) => {
@@ -198,40 +234,29 @@ router.post('/:id/send-whatsapp', wrap(async (req, res) => {
 
 router.post('/:token/check-in', wrap(async (req, res) => {
   const scanned = req.params.token.trim();
-  // The QR may encode our local token or the main system's QR token.
-  const pass = await Pass.findOne({ $or: [{ token: scanned }, { qr_token: scanned }] });
+  // The QR may encode our local token, the main system's bare QR id, or its
+  // signed JWT (payload.q holds the QR id). All resolve to the same pass.
+  const candidate = extractQrId(scanned);
+  const pass = await Pass.findOne({ $or: [{ token: scanned }, { qr_token: candidate }] });
   if (!pass) {
     return res.status(404).json({ error: 'Pass not found' });
   }
   if (pass.status === 'revoked') {
     return res.status(409).json({
       error: 'This pass has been revoked',
-      pass: await serializePassWithQr(await loadPassById(pass._id)),
+      pass: await serializePassWithQr(await loadPassById(pass._id), { includeImage: true }),
     });
   }
 
-  // If the pass came from the main system, tell the main system this QR was used.
-  let already = pass.status === 'used';
-  let sync = 'none';
-  if (pass.source === 'main-system' && pass.qr_token && isMainSystemConfigured()) {
-    try {
-      const consumed = await consumeQr(pass.qr_token);
-      if (consumed.alreadyConsumed) already = true;
-      sync = 'ok';
-    } catch (err) {
-      // Local check-in still proceeds; flag that the main system was not updated.
-      sync = 'failed';
-    }
-  }
-
+  const already = pass.status === 'used';
   if (!already) {
     pass.status = 'used';
     pass.checked_in_at = new Date();
     await pass.save();
   }
 
-  const serialized = await serializePassWithQr(await loadPassById(pass._id));
-  res.json({ pass: serialized, already, sync });
+  const serialized = await serializePassWithQr(await loadPassById(pass._id), { includeImage: true });
+  res.json({ pass: serialized, already });
 }));
 
 router.post('/:id/revoke', wrap(async (req, res) => {
@@ -241,7 +266,7 @@ router.post('/:id/revoke', wrap(async (req, res) => {
   }
   pass.status = 'revoked';
   await pass.save();
-  res.json({ pass: await serializePassWithQr(await loadPassById(pass._id)) });
+  res.json({ pass: await serializePassWithQr(await loadPassById(pass._id), { includeImage: true }) });
 }));
 
 export default router;

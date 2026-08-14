@@ -29,6 +29,8 @@ router.get('/passes/:token', wrap(async (req, res) => {
       valid_until: pass.valid_until || null,
       checked_in_at: pass.checked_in_at || null,
       created_at: pass.created_at || null,
+      // Main-system passes carry their own QR image; locals render from content.
+      qr_image: pass.main_qr_image || null,
       qr_svg: `data:image/svg+xml;utf8,${encodeURIComponent(
         await QRCode.toString(pass.qr_content, { type: 'svg', margin: 1, width: 200 })
       )}`,

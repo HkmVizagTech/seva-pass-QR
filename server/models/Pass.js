@@ -17,7 +17,10 @@ const passSchema = new mongoose.Schema(
     source: { type: String, enum: ['main-system', 'local'], default: 'local' },
     // Main-system references (only set when source === 'main-system').
     recipient_id: { type: String, default: null },
+    // Main-system QR id (e.g. ISK-EVT26-GN-0000123) — used for gate matching.
     qr_token: { type: String, default: '' },
+    // Main-system QR image (base64 PNG data URL) — shown on the pass card.
+    main_qr_image: { type: String, default: '' },
     status: { type: String, enum: PASS_STATUSES, default: 'unused', index: true },
     event_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Event', default: null, index: true },
     issued_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
