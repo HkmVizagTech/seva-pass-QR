@@ -6,12 +6,17 @@ export default function Events() {
   const [form, setForm] = useState({ name: '', location: '', date: '' });
   const [error, setError] = useState('');
   const [created, setCreated] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     api
       .events()
       .then(({ events }) => setEvents(events))
       .catch((e) => setError(e.message));
+    api
+      .me()
+      .then(({ user }) => setIsAdmin(user.role === 'admin'))
+      .catch(() => {});
   }, []);
 
   const submit = async (e) => {
@@ -41,25 +46,32 @@ export default function Events() {
       )}
 
       <div className="two-col">
-        <section className="panel">
-          <h2>Create event</h2>
-          <form onSubmit={submit} className="form">
-            {error && <div className="alert alert-error">{error}</div>}
-            <label>
-              Event name *
-              <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required placeholder="e.g. Janmashtami 2026" />
-            </label>
-            <label>
-              Location
-              <input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="e.g. Hare Krishna Temple, Chennai" />
-            </label>
-            <label>
-              Date
-              <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
-            </label>
-            <button className="btn btn-primary">Create event</button>
-          </form>
-        </section>
+        {isAdmin ? (
+          <section className="panel">
+            <h2>Create event</h2>
+            <form onSubmit={submit} className="form">
+              {error && <div className="alert alert-error">{error}</div>}
+              <label>
+                Event name *
+                <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required placeholder="e.g. Janmashtami 2026" />
+              </label>
+              <label>
+                Location
+                <input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="e.g. Hare Krishna Temple, Chennai" />
+              </label>
+              <label>
+                Date
+                <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
+              </label>
+              <button className="btn btn-primary">Create event</button>
+            </form>
+          </section>
+        ) : (
+          <section className="panel">
+            <h2>Events</h2>
+            <p className="muted">Events are managed by the admin. You can still view the list below.</p>
+          </section>
+        )}
 
         <section className="panel">
           <h2>All events</h2>

@@ -236,6 +236,7 @@ input[type='password'],
 input[type='email'],
 input[type='date'],
 input[type='tel'],
+input[type='number'],
 select,
 textarea {
   width: 100%;
@@ -387,6 +388,14 @@ textarea {
   border-top: 4px solid var(--saffron);
 }
 
+.stat-card.stat-total {
+  border-top-color: var(--saffron);
+}
+
+.stat-card.stat-unused {
+  border-top-color: var(--blue);
+}
+
 .stat-card.stat-used {
   border-top-color: var(--green);
 }
@@ -397,6 +406,10 @@ textarea {
 
 .stat-card.stat-today {
   border-top-color: var(--blue);
+}
+
+.stat-card.stat-events {
+  border-top-color: var(--maroon);
 }
 
 .stat-card.stat-quota {

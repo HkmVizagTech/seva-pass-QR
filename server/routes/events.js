@@ -31,6 +31,10 @@ router.get('/', wrap(async (req, res) => {
 }));
 
 router.post('/', wrap(async (req, res) => {
+  // Only admins may create events.
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Admin access required to create events' });
+  }
   const { name, location = '', date = '' } = req.body || {};
   if (!name) {
     return res.status(400).json({ error: 'Event name is required' });

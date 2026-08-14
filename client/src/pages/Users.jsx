@@ -23,7 +23,8 @@ export default function Users() {
 
   useEffect(load, []);
 
-  const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
+  const set = (key) => (e) =>
+    setForm((f) => ({ ...f, [key]: key === 'quota' ? Number(e.target.value) : e.target.value }));
 
   const create = async (e) => {
     e.preventDefault();
@@ -71,7 +72,8 @@ export default function Users() {
     }
   };
 
-  const editSet = (key) => (e) => setEditForm((f) => ({ ...f, [key]: e.target.value }));
+  const editSet = (key) => (e) =>
+    setEditForm((f) => ({ ...f, [key]: key === 'quota' ? Number(e.target.value) : e.target.value }));
 
   return (
     <div>
