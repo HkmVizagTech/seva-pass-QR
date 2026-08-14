@@ -2,6 +2,7 @@
   "name": "seva-pass-qr",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "description": "QR entry-pass management app for devotees",
   "workspaces": [
     "server",
