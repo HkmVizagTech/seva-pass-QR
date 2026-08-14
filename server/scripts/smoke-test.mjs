@@ -1,5 +1,6 @@
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import { spawn } from 'node:child_process';
+import net from 'node:net';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -39,6 +40,20 @@ async function waitForServer(tries = 30) {
     } catch {}
   }
   return false;
+}
+
+// Fail fast if port 4000 is already taken — otherwise the spawned test server
+// crashes while waitForServer() happily talks to the OTHER process (e.g. a dev
+// server pointed at the production database). That silently runs the whole
+// suite against real data. Abort instead.
+async function assertPortFree(port) {
+  return new Promise((resolve, reject) => {
+    const probe = net.createServer();
+    probe.once('error', () =>
+      reject(new Error(`Port ${port} is already in use — stop the other server (it may point at the production DB!) before running the smoke test`))
+    );
+    probe.listen(port, '127.0.0.1', () => probe.close(() => resolve()));
+  });
 }
 
 // ─── Stub of the real main system (HkmVizagTech/iskcon-seva-pass-backend) ───
@@ -91,6 +106,8 @@ process.env.PORT = '4000';
 process.env.MAIN_SYSTEM_API_URL = '';
 process.env.MAIN_SYSTEM_API_KEY = '';
 process.env.MAIN_SYSTEM_EVENT_ID = '';
+
+await assertPortFree(4000);
 
 let child = spawn('node', ['index.js'], {
   cwd: path.join(__dirname, '..'),

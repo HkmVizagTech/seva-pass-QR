@@ -56,6 +56,10 @@ a {
   margin-top: 2px;
 }
 
+code {
+  word-break: break-all;
+}
+
 .ta-r {
   text-align: right;
 }

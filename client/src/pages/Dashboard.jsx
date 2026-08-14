@@ -62,31 +62,33 @@ export default function Dashboard() {
         {recent.length === 0 ? (
           <p className="muted">No passes issued yet. <Link to="/issue">Issue your first pass</Link>.</p>
         ) : (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Donor / Invitee</th>
-                <th>Type</th>
-                <th>Event</th>
-                <th>Status</th>
-                <th>Issued</th>
-              </tr>
-            </thead>
-            <tbody>
-              {recent.map((p) => (
-                <tr key={p.id}>
-                  <td>
-                    {p.donor_name}
-                    <div className="sub">{p.phone || p.email || ''}</div>
-                  </td>
-                  <td>{p.pass_type}</td>
-                  <td>{p.event_name || '—'}</td>
-                  <td><span className={`badge badge-${p.status}`}>{p.status}</span></td>
-                  <td>{new Date(p.created_at).toLocaleDateString()}</td>
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Donor / Invitee</th>
+                  <th>Type</th>
+                  <th>Event</th>
+                  <th>Status</th>
+                  <th>Issued</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {recent.map((p) => (
+                  <tr key={p.id}>
+                    <td>
+                      {p.donor_name}
+                      <div className="sub">{p.phone || p.email || ''}</div>
+                    </td>
+                    <td>{p.pass_type}</td>
+                    <td>{p.event_name || '—'}</td>
+                    <td><span className={`badge badge-${p.status}`}>{p.status}</span></td>
+                    <td>{new Date(p.created_at).toLocaleDateString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
     </div>
