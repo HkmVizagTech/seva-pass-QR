@@ -6,9 +6,20 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "build:android": "vite build --mode android",
+    "preview": "vite preview",
+    "cap:add": "cap add",
+    "cap:sync": "cap sync",
+    "cap:open": "cap open android",
+    "cap:build": "npm run build:android && cap sync android",
+    "build:apk": "set \"JAVA_HOME=C:\\Users\\admin\\AppData\\Local\\Android\\jdk\\jdk-21.0.12+8\" && set \"ANDROID_HOME=C:\\Users\\admin\\AppData\\Local\\Android\\Sdk\" && npm run build:android && cap sync android && cd android && gradlew.bat assembleDebug && copy /Y app\\build\\outputs\\apk\\debug\\app-debug.apk ..\\..\\seva-pass-debug.apk"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/cli": "^8.5.0",
+    "@capacitor/core": "^8.5.0",
+    "@capacitor/splash-screen": "^8.0.2",
+    "@capacitor/status-bar": "^8.0.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.26.2"

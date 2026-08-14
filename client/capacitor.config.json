@@ -1,0 +1,23 @@
+{
+  "appId": "in.harekrishnavizag.sevapass",
+  "appName": "Seva Pass",
+  "webDir": "dist",
+  "backgroundColor": "#171d4d",
+  "android": {
+    "allowMixedContent": true
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1500,
+      "launchAutoHide": true,
+      "backgroundColor": "#171d4d",
+      "androidSplashResourceName": "splash",
+      "showSpinner": false
+    },
+    "StatusBar": {
+      "style": "LIGHT",
+      "backgroundColor": "#171d4d",
+      "overlaysWebView": true
+    }
+  }
+}

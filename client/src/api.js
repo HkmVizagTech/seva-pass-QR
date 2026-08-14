@@ -1,5 +1,13 @@
 const TOKEN_KEY = 'seva_token';
 
+// The backend origin for native (Capacitor) builds. When unset the app talks
+// to the same origin that serves it (Vite dev proxy / deployed domain).
+const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
+
+export function apiOrigin() {
+  return API_BASE || window.location.origin;
+}
+
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY);
 }
@@ -27,7 +35,7 @@ async function request(path, options = {}) {
   if (token) headers.Authorization = `Bearer ${token}`;
   if (options.body) headers['Content-Type'] = 'application/json';
 
-  const res = await fetch(path, { ...options, headers });
+  const res = await fetch(API_BASE + path, { ...options, headers });
   if (res.status === 401) {
     clearToken();
     throw new Error('Session expired. Please log in again.');
@@ -59,7 +67,7 @@ export const api = {
 };
 
 export async function downloadQrPng(id, filename) {
-  const res = await fetch(`/api/passes/${id}/qr.png`, {
+  const res = await fetch(`${API_BASE}/api/passes/${id}/qr.png`, {
     headers: { Authorization: `Bearer ${getToken()}` },
   });
   if (!res.ok) throw new Error('Download failed');
@@ -80,6 +88,11 @@ export function parseDate(value) {
   if (typeof value === 'number') return new Date(value);
   const s = String(value);
   if (/Z$|[+-]\d{2}:\d{2}$/.test(s)) return new Date(s);
+  // Date-only strings (e.g. "2026-08-14") should stay on the local calendar day.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const [y, m, d] = s.split('-').map(Number);
+    return new Date(y, m - 1, d);
+  }
   return new Date(s.replace(' ', 'T') + 'Z');
 }
 

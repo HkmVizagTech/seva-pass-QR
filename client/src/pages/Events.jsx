@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api.js';
+import { CalendarIcon, PlusIcon, LocationIcon } from '../components/icons.jsx';
 
 export default function Events() {
   const [events, setEvents] = useState([]);
@@ -22,6 +23,7 @@ export default function Events() {
   const submit = async (e) => {
     e.preventDefault();
     setError('');
+    setCreated(null);
     try {
       const { event } = await api.createEvent(form);
       setCreated(event);
@@ -33,10 +35,15 @@ export default function Events() {
   };
 
   return (
-    <div>
+    <div className="fade-up">
       <header className="page-header">
-        <h1>Events</h1>
-        <p>Manage the events you issue passes for</p>
+        <div className="page-title">
+          <span className="title-icon"><CalendarIcon size={22} /></span>
+          <div>
+            <h1>Events</h1>
+            <p>Manage the events you issue passes for</p>
+          </div>
+        </div>
       </header>
 
       {created && (
@@ -57,13 +64,15 @@ export default function Events() {
               </label>
               <label>
                 Location
-                <input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="e.g. Hare Krishna Temple, Chennai" />
+                <input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="e.g. Hare Krishna Temple, Visakhapatnam" />
               </label>
               <label>
                 Date
                 <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
               </label>
-              <button className="btn btn-primary">Create event</button>
+              <button className="btn btn-primary">
+                <PlusIcon size={16} /> Create event
+              </button>
             </form>
           </section>
         ) : (
@@ -81,10 +90,14 @@ export default function Events() {
             <div className="event-list">
               {events.map((ev) => (
                 <div key={ev.id} className="event-item">
-                  <div>
+                  <span className="event-ico"><CalendarIcon size={18} /></span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     <div className="event-name">{ev.name}</div>
                     <div className="sub">
-                      {ev.location || 'No location'}
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                        <LocationIcon size={11} />
+                        {ev.location || 'No location'}
+                      </span>
                       {ev.date ? ` · ${new Date(ev.date).toLocaleDateString()}` : ''}
                     </div>
                   </div>

@@ -2,7 +2,7 @@
 // - Navigations: network-first, falling back to the cached app shell (works offline).
 // - Static assets (hashed by Vite): cache-first.
 // - API calls are never intercepted.
-const CACHE = 'seva-pass-v2';
+const CACHE = 'seva-pass-v3';
 const SHELL = ['/', '/index.html', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png'];
 
 self.addEventListener('install', (event) => {

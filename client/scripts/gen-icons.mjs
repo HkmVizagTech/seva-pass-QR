@@ -34,15 +34,15 @@ function chunk(type, data) {
   return Buffer.concat([len, body, crc]);
 }
 
-const BG = [245, 158, 11]; // saffron
-const WHITE = [255, 255, 255];
+const BG = [17, 22, 58]; // krishna midnight blue
+const GOLD = [251, 191, 36]; // gold ring / centre dot
 
-// Simple seal mark: white ring around a white centre dot on saffron.
-// Kept inside the centre 84% so it also works as a maskable icon.
+// Simple seal mark: a gold ring around a gold centre dot on Krishna blue.
+// Kept inside the centre 72% so it also works as a maskable icon.
 function shade(cx, cy) {
   const r = Math.hypot(cx, cy);
-  if (r <= 0.42 && r >= 0.27) return WHITE;
-  if (r <= 0.1) return WHITE;
+  if (r <= 0.36 && r >= 0.3) return GOLD;
+  if (r <= 0.16) return GOLD;
   return BG;
 }
 

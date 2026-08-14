@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api.js';
+import { UsersIcon, PlusIcon, EditIcon } from '../components/icons.jsx';
 
 const ROLES = ['admin', 'devotee'];
 const EMPTY = { username: '', password: '', name: '', role: 'devotee', quota: 30 };
@@ -7,8 +8,8 @@ const EMPTY = { username: '', password: '', name: '', role: 'devotee', quota: 30
 export default function Users() {
   const [users, setUsers] = useState([]);
   const [form, setForm] = useState(EMPTY);
-  const [editing, setEditing] = useState(null); // user id being edited
-  const [editForm, setEditForm] = useState(null); // { name, role, quota, password }
+  const [editing, setEditing] = useState(null);
+  const [editForm, setEditForm] = useState(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
@@ -76,10 +77,15 @@ export default function Users() {
     setEditForm((f) => ({ ...f, [key]: key === 'quota' ? Number(e.target.value) : e.target.value }));
 
   return (
-    <div>
+    <div className="fade-up">
       <header className="page-header">
-        <h1>Devotees &amp; Quotas</h1>
-        <p>Create devotees and set how many passes each may hold</p>
+        <div className="page-title">
+          <span className="title-icon"><UsersIcon size={22} /></span>
+          <div>
+            <h1>Devotees &amp; Quotas</h1>
+            <p>Create devotees and set how many passes each may hold</p>
+          </div>
+        </div>
       </header>
 
       {error && <div className="alert alert-error">{error}</div>}
@@ -91,15 +97,15 @@ export default function Users() {
           <form onSubmit={create} className="form">
             <label>
               Full name *
-              <input value={form.name} onChange={set('name')} required placeholder="e.g. Radha Krishna Das" />
+              <input value={form.name} onChange={set('name')} required placeholder="e.g. Radha Krishna Das" autoComplete="off" />
             </label>
             <label>
               Username *
-              <input value={form.username} onChange={set('username')} required placeholder="e.g. radhakrishna" />
+              <input value={form.username} onChange={set('username')} required placeholder="e.g. radhakrishna" autoComplete="off" />
             </label>
             <label>
               Password *
-              <input type="password" value={form.password} onChange={set('password')} required placeholder="Temporary password" />
+              <input type="password" value={form.password} onChange={set('password')} required placeholder="Temporary password" autoComplete="new-password" />
             </label>
             <div className="form-row">
               <label>
@@ -112,11 +118,11 @@ export default function Users() {
               </label>
               <label>
                 Quota (max passes)
-                <input type="number" min="1" value={form.quota} onChange={set('quota')} />
+                <input type="number" min="1" inputMode="numeric" value={form.quota} onChange={set('quota')} />
               </label>
             </div>
             <button className="btn btn-primary" disabled={loading}>
-              {loading ? 'Saving…' : 'Create devotee'}
+              <PlusIcon size={16} /> {loading ? 'Saving…' : 'Create devotee'}
             </button>
           </form>
         </section>
@@ -158,11 +164,11 @@ export default function Users() {
                               </label>
                               <label>
                                 Quota
-                                <input type="number" min="1" value={editForm.quota} onChange={editSet('quota')} />
+                                <input type="number" min="1" inputMode="numeric" value={editForm.quota} onChange={editSet('quota')} />
                               </label>
                               <label>
                                 New password (optional)
-                                <input type="password" value={editForm.password} onChange={editSet('password')} placeholder="Leave blank to keep" />
+                                <input type="password" value={editForm.password} onChange={editSet('password')} placeholder="Leave blank to keep" autoComplete="new-password" />
                               </label>
                             </div>
                             <div className="actions">
@@ -180,12 +186,15 @@ export default function Users() {
                           <td><span className={`badge ${u.role === 'admin' ? 'badge-main' : ''}`}>{u.role}</span></td>
                           <td>{u.quota}</td>
                           <td>
-                            {u.used} <span className={`badge ${u.used >= u.quota ? 'badge-revoked' : ''}`}>
+                            {u.used}{' '}
+                            <span className={`badge ${u.used >= u.quota ? 'badge-revoked' : ''}`}>
                               {u.used >= u.quota ? 'full' : `${u.quota - u.used} left`}
                             </span>
                           </td>
                           <td className="ta-r">
-                            <button className="btn btn-ghost btn-sm" onClick={() => startEdit(u)}>Edit</button>
+                            <button className="btn btn-ghost btn-sm" onClick={() => startEdit(u)}>
+                              <EditIcon size={14} /> Edit
+                            </button>
                           </td>
                         </>
                       )}

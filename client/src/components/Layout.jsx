@@ -1,6 +1,33 @@
 import React, { useEffect, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { api, clearToken } from '../api.js';
+import {
+  DashboardIcon,
+  QrIcon,
+  ListIcon,
+  CalendarIcon,
+  UsersIcon,
+  LogoutIcon,
+  MenuIcon,
+  CloseIcon,
+} from './icons.jsx';
+
+const NAV_ITEMS = [
+  { to: '/', end: true, label: 'Dashboard', icon: DashboardIcon },
+  { to: '/issue', label: 'Issue Pass', icon: QrIcon },
+  { to: '/passes', label: 'All Passes', icon: ListIcon },
+  { to: '/events', label: 'Events', icon: CalendarIcon },
+  { to: '/users', label: 'Devotees', icon: UsersIcon, adminOnly: true },
+];
+
+function initials(name = '') {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0].toUpperCase())
+    .join('');
+}
 
 export default function Layout() {
   const [user, setUser] = useState(null);
@@ -23,6 +50,8 @@ export default function Layout() {
   };
 
   const closeNav = () => setNavOpen(false);
+  const isAdmin = user?.role === 'admin';
+  const items = NAV_ITEMS.filter((i) => !i.adminOnly || isAdmin);
 
   return (
     <div className={`app-shell ${navOpen ? 'nav-open' : ''}`}>
@@ -33,42 +62,72 @@ export default function Layout() {
           <span className="brand-logo">ॐ</span>
           <div>
             <div className="brand-title">Seva Pass</div>
-            <div className="brand-sub">Entry Pass Manager</div>
+            <div className="brand-sub">ISKCON Visakhapatnam</div>
           </div>
         </div>
+
         <nav className="nav">
-          <NavLink to="/" end onClick={closeNav}>Dashboard</NavLink>
-          <NavLink to="/issue" onClick={closeNav}>Issue Pass</NavLink>
-          <NavLink to="/passes" onClick={closeNav}>All Passes</NavLink>
-          <NavLink to="/events" onClick={closeNav}>Events</NavLink>
-          {user && user.role === 'admin' && (
-            <NavLink to="/users" onClick={closeNav}>Devotees &amp; Quotas</NavLink>
-          )}
+          {items.map(({ to, end, label, icon: Icon }) => (
+            <NavLink key={to} to={to} end={end} onClick={closeNav}>
+              <Icon size={19} />
+              {label}
+            </NavLink>
+          ))}
         </nav>
+
         <div className="sidebar-footer">
           {user && (
             <div className="user-chip">
-              <div className="user-name">{user.name}</div>
-              <div className="user-role">{user.role} · @{user.username}</div>
+              <span className="user-avatar">{initials(user.name)}</span>
+              <div className="user-meta">
+                <div className="user-name">{user.name}</div>
+                <div className="user-role">{user.role} · @{user.username}</div>
+              </div>
             </div>
           )}
-          <button className="btn btn-ghost btn-block" onClick={logout}>Log out</button>
+          <button className="btn btn-ghost btn-block" style={{ color: '#fff', borderColor: 'rgba(255,255,255,0.3)' }} onClick={logout}>
+            <LogoutIcon size={17} /> Log out
+          </button>
         </div>
       </aside>
 
       <main className="main">
         <div className="topbar">
-          <button
-            className="menu-toggle"
-            onClick={() => setNavOpen((v) => !v)}
-            aria-label={navOpen ? 'Close menu' : 'Open menu'}
-          >
-            {navOpen ? '✕' : '☰'}
+          <button className="menu-toggle" onClick={() => setNavOpen((v) => !v)} aria-label={navOpen ? 'Close menu' : 'Open menu'}>
+            {navOpen ? <CloseIcon size={20} /> : <MenuIcon size={20} />}
           </button>
-          <span className="topbar-title">Seva Pass</span>
+          <div className="topbar-brand">
+            <span className="brand-logo">ॐ</span>
+            <span className="topbar-title">Seva Pass</span>
+          </div>
+          <div className="topbar-spacer" />
+          {user && (
+            <button
+              className="menu-toggle"
+              onClick={logout}
+              aria-label="Log out"
+              title="Log out"
+              style={{ width: 42, height: 42 }}
+            >
+              <LogoutIcon size={18} />
+            </button>
+          )}
         </div>
+
         <Outlet />
       </main>
+
+      <nav className="tabbar" aria-label="Primary">
+        <div className="tabbar-inner">
+          {items.map(({ to, end, label, icon: Icon }) => (
+            <NavLink key={to} to={to} end={end} className={({ isActive }) => `tab ${isActive ? 'active' : ''}`}>
+              <Icon size={22} />
+              <span>{label}</span>
+              <span className="tab-dot" />
+            </NavLink>
+          ))}
+        </div>
+      </nav>
     </div>
   );
 }

@@ -1,10 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { api, downloadQrPng } from '../api.js';
+import { Link } from 'react-router-dom';
+import { api, apiOrigin, downloadQrPng } from '../api.js';
+import { QrIcon, DownloadIcon, ExternalIcon, CheckIcon } from '../components/icons.jsx';
 
-const EMPTY = { donor_name: '', phone: '' };
+const PASS_TYPES = ['General', 'VIP', 'Donor', 'Volunteer', 'Staff', 'Media'];
+const EMPTY = { donor_name: '', phone: '', email: '', pass_type: 'General', event_id: '' };
 
 export default function IssuePass() {
   const [form, setForm] = useState(EMPTY);
+  const [events, setEvents] = useState([]);
   const [created, setCreated] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -14,6 +18,10 @@ export default function IssuePass() {
     api
       .stats()
       .then(({ stats }) => setQuota(stats.quota))
+      .catch(() => {});
+    api
+      .events()
+      .then(({ events }) => setEvents(events))
       .catch(() => {});
   }, []);
 
@@ -25,8 +33,12 @@ export default function IssuePass() {
     setLoading(true);
     try {
       const { pass } = await api.createPass({
-        ...form,
-        baseUrl: window.location.origin,
+        donor_name: form.donor_name,
+        phone: form.phone,
+        email: form.email,
+        pass_type: form.pass_type,
+        event_id: form.event_id || null,
+        baseUrl: apiOrigin(),
       });
       setCreated(pass);
       setForm(EMPTY);
@@ -37,20 +49,45 @@ export default function IssuePass() {
     }
   };
 
+  const pct = quota ? Math.round((quota.used / quota.limit) * 100) : 0;
+
   return (
-    <div>
+    <div className="fade-up">
       <header className="page-header">
-        <h1>Issue Pass</h1>
-        <p>Enter the devotee's name and phone number to get their QR pass from the main system</p>
+        <div className="page-title">
+          <span className="title-icon"><QrIcon size={22} /></span>
+          <div>
+            <h1>Issue Pass</h1>
+            <p>Enter the devotee's name and phone to get their QR pass</p>
+          </div>
+        </div>
       </header>
 
       <div className="two-col">
         <section className="panel">
           <form onSubmit={submit} className="form">
             {error && <div className="alert alert-error">{error}</div>}
+
+            {quota && (
+              <div style={{ marginBottom: 14 }}>
+                <div className="alert" style={{ margin: 0, padding: '12px 14px', background: quota.used >= quota.limit ? 'var(--red-bg)' : '#fdf4e0', border: '1px solid ' + (quota.used >= quota.limit ? '#f3c1c1' : 'var(--saffron-400)'), color: quota.used >= quota.limit ? 'var(--red)' : 'var(--saffron-700)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600, fontSize: '0.85rem' }}>
+                    <span>My quota</span>
+                    <span>{quota.used} / {quota.limit} used</span>
+                  </div>
+                  <div style={{ height: 6, borderRadius: 999, background: '#e6d9bd', marginTop: 8, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${Math.min(pct, 100)}%`, borderRadius: 999, background: quota.used >= quota.limit ? 'var(--red)' : 'var(--brand-gradient)' }} />
+                  </div>
+                </div>
+                {quota.used >= quota.limit && (
+                  <p className="sub" style={{ margin: '6px 2px 0' }}>Quota reached — revoke an unused pass to issue more.</p>
+                )}
+              </div>
+            )}
+
             <label>
               Devotee name *
-              <input value={form.donor_name} onChange={set('donor_name')} required placeholder="e.g. Krishna Das" />
+              <input value={form.donor_name} onChange={set('donor_name')} required placeholder="e.g. Krishna Das" autoComplete="off" />
             </label>
             <label>
               Phone number *
@@ -59,17 +96,37 @@ export default function IssuePass() {
                 onChange={set('phone')}
                 required
                 type="tel"
-                placeholder="e.g. 9876543210 (used to claim the QR)"
+                inputMode="tel"
+                autoComplete="tel"
+                placeholder="e.g. 9876543210"
               />
             </label>
-            {quota && (
-              <div className={`alert ${quota.used >= quota.limit ? 'alert-error' : 'alert-info'}`}>
-                My quota: <strong>{quota.used} / {quota.limit}</strong> passes used
-                {quota.used >= quota.limit && ' — quota reached. Revoke an unused pass to issue more.'}
-              </div>
-            )}
+            <div className="form-row">
+              <label>
+                Email (optional)
+                <input type="email" inputMode="email" value={form.email} onChange={set('email')} placeholder="devotee@example.com" />
+              </label>
+              <label>
+                Pass type
+                <select value={form.pass_type} onChange={set('pass_type')}>
+                  {PASS_TYPES.map((t) => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <label>
+              Event (optional)
+              <select value={form.event_id} onChange={set('event_id')}>
+                <option value="">No event selected</option>
+                {events.map((ev) => (
+                  <option key={ev.id} value={ev.id}>{ev.name}</option>
+                ))}
+              </select>
+            </label>
+
             <button className="btn btn-primary btn-block" disabled={loading}>
-              {loading ? 'Getting QR from main system…' : 'Get QR pass'}
+              {loading ? 'Getting QR pass…' : 'Get QR pass'}
             </button>
           </form>
         </section>
@@ -77,32 +134,37 @@ export default function IssuePass() {
         <section className="panel">
           <h2>Preview</h2>
           {created ? (
-            <div className="pass-card">
+            <div className="pass-card fade-up">
+              {created.source === 'main-system' && (
+                <div className="badge badge-main">main system</div>
+              )}
               <div className="pass-card-qr">
                 <img src={created.qr_image || created.qr_svg} alt={`QR pass for ${created.donor_name}`} />
               </div>
-              <div className="pass-card-details">
-                <div className="pass-card-name">{created.donor_name}</div>
-                <div className="pass-card-type">{created.phone || ''}</div>
-                <div className="sub">Token: <code>{created.token}</code></div>
-              </div>
+              <div className="pass-card-name">{created.donor_name}</div>
+              <div className="pass-card-type">{created.pass_type}{created.phone ? ` · ${created.phone}` : ''}</div>
+              {created.event_name && <div className="sub">{created.event_name}</div>}
+              <div className="sub">Token: <code>{created.token}</code></div>
               <div className="pass-card-actions">
                 <button
-                  className="btn btn-primary"
+                  className="btn btn-primary btn-sm"
                   onClick={() => downloadQrPng(created.id, `${created.donor_name.replace(/\s+/g, '-')}-pass.png`)}
                 >
-                  Download PNG
+                  <DownloadIcon size={15} /> Download PNG
                 </button>
-                <a className="btn btn-ghost" href={`/pass?t=${created.token}`} target="_blank" rel="noreferrer">
-                  Open pass card
-                </a>
+                <Link className="btn btn-ghost btn-sm" to={`/pass?t=${created.token}`}>
+                  <ExternalIcon size={15} /> Open card
+                </Link>
               </div>
-              {created.source === 'main-system' && (
-                <p className="sub">QR issued by the main ISKCON pass system · id {created.main_qr_id}</p>
-              )}
+              <div className="sub" style={{ marginTop: 10 }}>
+                <CheckIcon size={13} /> Pass issued successfully
+              </div>
             </div>
           ) : (
-            <p className="muted">Enter the name and phone number to get the QR pass here.</p>
+            <div className="muted" style={{ textAlign: 'center', padding: '30px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+              <QrIcon size={40} style={{ opacity: 0.35 }} />
+              <span>Enter the name and phone number to get the QR pass here.</span>
+            </div>
           )}
         </section>
       </div>

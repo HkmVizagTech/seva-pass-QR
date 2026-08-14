@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, setToken } from '../api.js';
+import { MusicIcon } from '../components/icons.jsx';
 
 export default function Login() {
   const [username, setUsername] = useState('');
@@ -26,11 +27,14 @@ export default function Login() {
 
   return (
     <div className="login-page">
-      <div className="login-card">
+      <div className="login-card fade-up">
         <div className="login-brand">
           <span className="brand-logo large">ॐ</span>
           <h1>Seva Pass</h1>
           <p>QR entry pass manager for devotees</p>
+          <div className="login-kicker">
+            <MusicIcon size={13} /> Janmashtami · Hare Krishna <MusicIcon size={13} />
+          </div>
         </div>
         <form onSubmit={submit} className="form">
           <label>

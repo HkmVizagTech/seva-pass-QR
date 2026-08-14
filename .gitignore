@@ -6,3 +6,4 @@ server/data/
 .vercel/
 *.log
 .DS_Store
+*.apk
