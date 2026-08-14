@@ -2,8 +2,12 @@
   "version": 2,
   "installCommand": "npm install --include=dev",
   "buildCommand": "cd client && npm run build",
-  "outputDirectory": "client/dist",
-  "rewrites": [
-    { "source": "/((?!api/).*)", "destination": "/index.html" }
+  "builds": [
+    { "src": "api/index.js", "use": "@vercel/node" },
+    { "src": "client/dist/**", "use": "@vercel/static" }
+  ],
+  "routes": [
+    { "src": "/api/(.*)", "dest": "/api/index.js" },
+    { "src": "/((?!api/).*)", "dest": "/client/dist/index.html" }
   ]
 }
