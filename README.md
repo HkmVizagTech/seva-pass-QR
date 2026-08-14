@@ -122,10 +122,12 @@ server/
     smoke-test.mjs      API test suite against in-memory MongoDB
 client/
   src/
-    App.jsx             routing (protected routes, lazy scanner)
+    App.jsx             routing (protected routes)
     api.js              fetch helpers, token storage, date parsing
     components/Layout.jsx
-    pages/              Login, Dashboard, IssuePass, PassList, ScanPass, Events, PublicPass
+    pages/              Login, Dashboard, IssuePass, PassList, Events, PublicPass
+    public/             PWA assets (manifest, service worker, icons)
+    scripts/gen-icons.mjs  regenerates the PWA icons (node scripts/gen-icons.mjs)
     index.css           saffron-themed styles + print styles
 ```
 

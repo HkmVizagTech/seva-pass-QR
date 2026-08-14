@@ -1,32 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { api, downloadQrPng } from '../api.js';
 
-const TYPES = ['General', 'VIP', 'Donor', 'Volunteer', 'Staff', 'Media'];
-
-const EMPTY = {
-  donor_name: '',
-  phone: '',
-  email: '',
-  pass_type: 'General',
-  event_id: '',
-  valid_from: '',
-  valid_until: '',
-  notes: '',
-};
+const EMPTY = { donor_name: '', phone: '' };
 
 export default function IssuePass() {
   const [form, setForm] = useState(EMPTY);
-  const [events, setEvents] = useState([]);
   const [created, setCreated] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [quota, setQuota] = useState(null);
 
   useEffect(() => {
-    api
-      .events()
-      .then(({ events }) => setEvents(events))
-      .catch(() => {});
     api
       .stats()
       .then(({ stats }) => setQuota(stats.quota))
@@ -42,7 +26,6 @@ export default function IssuePass() {
     try {
       const { pass } = await api.createPass({
         ...form,
-        event_id: form.event_id || null,
         baseUrl: window.location.origin,
       });
       setCreated(pass);
@@ -58,7 +41,7 @@ export default function IssuePass() {
     <div>
       <header className="page-header">
         <h1>Issue Pass</h1>
-        <p>Generate a QR entry pass for a donor or invitee</p>
+        <p>Enter the devotee's name and phone number to get their QR pass from the main system</p>
       </header>
 
       <div className="two-col">
@@ -66,8 +49,18 @@ export default function IssuePass() {
           <form onSubmit={submit} className="form">
             {error && <div className="alert alert-error">{error}</div>}
             <label>
-              Donor / Invitee name *
+              Devotee name *
               <input value={form.donor_name} onChange={set('donor_name')} required placeholder="e.g. Krishna Das" />
+            </label>
+            <label>
+              Phone number *
+              <input
+                value={form.phone}
+                onChange={set('phone')}
+                required
+                type="tel"
+                placeholder="e.g. 9876543210 (used to claim the QR)"
+              />
             </label>
             {quota && (
               <div className={`alert ${quota.used >= quota.limit ? 'alert-error' : 'alert-info'}`}>
@@ -75,51 +68,8 @@ export default function IssuePass() {
                 {quota.used >= quota.limit && ' — quota reached. Revoke an unused pass to issue more.'}
               </div>
             )}
-            <div className="form-row">
-              <label>
-                Phone *
-                <input value={form.phone} onChange={set('phone')} required placeholder="+91 … (used to claim the QR)" />
-              </label>
-              <label>
-                Email
-                <input type="email" value={form.email} onChange={set('email')} placeholder="name@example.com" />
-              </label>
-            </div>
-            <div className="form-row">
-              <label>
-                Pass type
-                <select value={form.pass_type} onChange={set('pass_type')}>
-                  {TYPES.map((t) => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Event
-                <select value={form.event_id} onChange={set('event_id')}>
-                  <option value="">— No event —</option>
-                  {events.map((ev) => (
-                    <option key={ev.id} value={ev.id}>{ev.name}</option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <div className="form-row">
-              <label>
-                Valid from
-                <input type="date" value={form.valid_from} onChange={set('valid_from')} />
-              </label>
-              <label>
-                Valid until
-                <input type="date" value={form.valid_until} onChange={set('valid_until')} />
-              </label>
-            </div>
-            <label>
-              Notes
-              <textarea value={form.notes} onChange={set('notes')} rows={3} placeholder="Optional remarks" />
-            </label>
             <button className="btn btn-primary btn-block" disabled={loading}>
-              {loading ? 'Generating…' : 'Generate QR pass'}
+              {loading ? 'Getting QR from main system…' : 'Get QR pass'}
             </button>
           </form>
         </section>
@@ -133,7 +83,7 @@ export default function IssuePass() {
               </div>
               <div className="pass-card-details">
                 <div className="pass-card-name">{created.donor_name}</div>
-                <div className="pass-card-type">{created.pass_type}</div>
+                <div className="pass-card-type">{created.phone || ''}</div>
                 <div className="sub">Token: <code>{created.token}</code></div>
               </div>
               <div className="pass-card-actions">
@@ -152,7 +102,7 @@ export default function IssuePass() {
               )}
             </div>
           ) : (
-            <p className="muted">Fill the form and generate a pass to see its QR here.</p>
+            <p className="muted">Enter the name and phone number to get the QR pass here.</p>
           )}
         </section>
       </div>

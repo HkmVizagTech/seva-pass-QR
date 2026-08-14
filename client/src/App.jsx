@@ -1,4 +1,4 @@
-import React, { Suspense, lazy } from 'react';
+import React, { Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { getToken } from './api.js';
 import Layout from './components/Layout.jsx';
@@ -9,8 +9,6 @@ import PassList from './pages/PassList.jsx';
 import Events from './pages/Events.jsx';
 import Users from './pages/Users.jsx';
 import PublicPass from './pages/PublicPass.jsx';
-
-const ScanPass = lazy(() => import('./pages/ScanPass.jsx'));
 
 function RequireAuth({ children }) {
   if (!getToken()) {
@@ -36,7 +34,6 @@ export default function App() {
           <Route index element={<Dashboard />} />
           <Route path="issue" element={<IssuePass />} />
           <Route path="passes" element={<PassList />} />
-          <Route path="scan" element={<ScanPass />} />
           <Route path="events" element={<Events />} />
           <Route path="users" element={<Users />} />
         </Route>

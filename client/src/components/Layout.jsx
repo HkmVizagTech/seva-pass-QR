@@ -35,7 +35,6 @@ export default function Layout() {
           <NavLink to="/" end>Dashboard</NavLink>
           <NavLink to="/issue">Issue Pass</NavLink>
           <NavLink to="/passes">All Passes</NavLink>
-          <NavLink to="/scan">Scan &amp; Validate</NavLink>
           <NavLink to="/events">Events</NavLink>
           {user && user.role === 'admin' && <NavLink to="/users">Devotees &amp; Quotas</NavLink>}
         </nav>
