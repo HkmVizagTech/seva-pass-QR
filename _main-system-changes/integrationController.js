@@ -1,0 +1,285 @@
+// ─── Integration controller ────────────────────────────────────────────────
+// Handles the inbound endpoint from the third-party system:
+//   POST /api/integration/generate-volunteer-qr
+//   GET  /api/integration/events/:eventCode/entry-points
+//   GET  /api/integration/events/:eventCode/venues
+//
+// When someone marks interest on their platform, they call this endpoint.
+// We create/find the holder in our system and return the QR code.
+
+const Event = require("../models/Event");
+const Category = require("../models/Category");
+const EntryPoint = require("../models/EntryPoint");
+const Holder = require("../models/Holder");
+const HolderType = require("../models/HolderType");
+const QRPass = require("../models/QRPass");
+const qrService = require("../services/qrService");
+const thirdPartyService = require("../services/thirdPartyService");
+const whatsappService = require("../services/whatsappService");
+
+// Helper: normalise phone
+function normalisePhone(phone) {
+  if (!phone) return null;
+  const digits = String(phone).replace(/[\+\s\-\(\)]/g, "");
+  if (digits.length === 10) return "91" + digits;
+  if (digits.length === 12 && digits.startsWith("91")) return digits;
+  if (digits.length === 11 && digits.startsWith("0")) return "91" + digits.slice(1);
+  return digits;
+}
+
+// Send the QR to the holder's phone via the main system's Flaxxa integration.
+// Non-fatal - WhatsApp failure must never block QR issuance.
+async function trySendWhatsApp(phone, qrImage, holder, event, entryPoints) {
+  try {
+    await whatsappService.sendQRMessage(phone, qrImage, holder.name, event.name, {
+      entryPoints: (entryPoints || []).map((ep) => ({
+        name: ep.name || ep.stationLabel,
+        stationLabel: ep.stationLabel || ep.name,
+      })),
+      validFrom: event.dateStart,
+      venue: (event.venue && event.venue[0] && event.venue[0].name) || "ISKCON Temple, Visakhapatnam",
+      isSponsor: false,
+    });
+    console.log(`[Integration] WhatsApp QR sent to ${phone} for ${event.eventCode}`);
+  } catch (error) {
+    console.error(`[Integration] WhatsApp send skipped for ${phone}:`, error.message);
+  }
+}
+
+/** Find an event by eventCode or MongoDB _id. */
+async function findEvent(eventCode) {
+  return Event.findOne({
+    $or: [
+      { eventCode: String(eventCode).toUpperCase() },
+      { _id: String(eventCode).match(/^[0-9a-fA-F]{24}$/) ? eventCode : null },
+    ],
+  });
+}
+
+/**
+ * Resolve which entry points to use for a QR pass.
+ * If venue is provided, filter by location.building matching the venue name.
+ * Otherwise, use the category defaults.
+ */
+async function resolveEntryPoints(event, category, venue) {
+  if (venue) {
+    const eps = await EntryPoint.find({
+      eventId: event._id,
+      isActive: true,
+      "location.building": new RegExp("^" + venue.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$", "i"),
+    });
+    // Fall back to category defaults if no entry points match the venue
+    return eps.length > 0 ? eps : (category.entryPoints || []);
+  }
+  return category.entryPoints || [];
+}
+
+/**
+ * GET /api/integration/events
+ *
+ * Returns all events from the main system. Used by the Seva Pass app to
+ * sync events so the admin doesn't have to create them manually.
+ */
+exports.getAllEvents = async (req, res) => {
+  try {
+    const events = await Event.find({})
+      .select("name eventCode dateStart dateEnd venue description")
+      .sort({ dateStart: -1 });
+    res.json(events);
+  } catch (error) {
+    console.error("[Integration] getAllEvents error:", error);
+    res.status(500).json({ status: false, message: "Failed to fetch events" });
+  }
+};
+
+/**
+ * GET /api/integration/events/:eventCode/venues
+ *
+ * Returns the venues array for an event. Used by the Seva Pass app to
+ * populate the venue selector on the IssuePass form.
+ */
+exports.getEventVenues = async (req, res) => {
+  try {
+    const event = await findEvent(req.params.eventCode);
+    if (!event) {
+      return res.status(404).json({ status: false, message: "Event not found" });
+    }
+    const venues = (event.venue || []).map((v, i) => ({
+      index: i,
+      name: v.name,
+      address: v.address || "",
+      coordinates: v.coordinates || null,
+    }));
+    res.json(venues);
+  } catch (error) {
+    console.error("[Integration] getEventVenues error:", error);
+    res.status(500).json({ status: false, message: "Failed to fetch venues" });
+  }
+};
+
+/**
+ * GET /api/integration/events/:eventCode/entry-points
+ *
+ * Returns active entry points for an event, optionally filtered by venue.
+ * ?venue=<name> filters by location.building (case-insensitive match).
+ */
+exports.getEventEntryPoints = async (req, res) => {
+  try {
+    const event = await findEvent(req.params.eventCode);
+    if (!event) {
+      return res.status(404).json({ status: false, message: "Event not found" });
+    }
+    const query = { eventId: event._id, isActive: true };
+    const { venue } = req.query;
+    if (venue) {
+      query["location.building"] = new RegExp("^" + venue.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$", "i");
+    }
+    const entryPoints = await EntryPoint.find(query)
+      .select("name stationLabel type location maxCapacity currentCount")
+      .sort({ type: 1, name: 1 });
+    res.json(entryPoints);
+  } catch (error) {
+    console.error("[Integration] getEventEntryPoints error:", error);
+    res.status(500).json({ status: false, message: "Failed to fetch entry points" });
+  }
+};
+
+/**
+ * POST /api/integration/generate-volunteer-qr
+ *
+ * Request body:
+ *   { event_id, user_phone_number, user_email?, venue? }
+ *
+ * If venue is provided, entry points for the QR pass are filtered to those
+ * whose location.building matches the venue name.
+ */
+exports.generateVolunteerQR = async (req, res) => {
+  try {
+    const { event_id, user_phone_number, user_email, venue } = req.body;
+
+    if (!event_id) {
+      return res.status(400).json({ status: false, message: "event_id is required" });
+    }
+    if (!user_phone_number) {
+      return res.status(400).json({ status: false, message: "user_phone_number is required" });
+    }
+
+    const phone = normalisePhone(String(user_phone_number));
+    if (!phone) {
+      return res.status(400).json({ status: false, message: "Invalid phone number" });
+    }
+
+    const event = await findEvent(event_id);
+    if (!event) {
+      return res.status(404).json({ status: false, message: `Event not found for event_id: ${event_id}` });
+    }
+
+    // ── Check if holder already has an active pass ──────────────────────────
+    const existingHolder = await Holder.findOne({ eventId: event._id, phone });
+    if (existingHolder) {
+      const existingPass = await QRPass.findOne({ holderId: existingHolder._id, status: "active" });
+      if (existingPass) {
+        // Already issued — regenerate QR image and return it
+        const entryPoints = await resolveEntryPoints(event, null, venue);
+        const payload = qrService.createPayload(
+          { ...existingHolder.toObject(), qrId: existingPass.qrId },
+          event, null, entryPoints,
+        );
+        const { image: qrImage } = await qrService.generateQRCode(payload);
+        await trySendWhatsApp(phone, qrImage, existingHolder, event, entryPoints);
+        return res.json({
+          status: true,
+          message: "QR code already exists — returning existing pass",
+          qr_code: qrImage,
+          qr_id: existingPass.qrId,
+        });
+      }
+    }
+
+    // ── Find the default "General Public" category ──────────────────────────
+    const category = await Category.findOne({
+      eventId: event._id,
+      $or: [{ catCode: "GN" }, { name: /general/i }, { name: /volunteer/i }],
+    }).populate("entryPoints");
+
+    if (!category) {
+      return res.status(400).json({
+        status: false,
+        message: "No suitable category found for this event. Please configure a General Public or Volunteer category.",
+      });
+    }
+
+    // ── Resolve entry points (filtered by venue if provided) ────────────────
+    const entryPoints = await resolveEntryPoints(event, category, venue);
+
+    // ── Create or update holder ─────────────────────────────────────────────
+    let holderTypeId = null;
+    let holderTypeLabel = "self";
+    try {
+      const typeName = (process.env.INTEGRATION_HOLDER_TYPE || "invitee").trim();
+      let holderType = await HolderType.findOne({
+        eventId: event._id, isActive: true,
+        $or: [{ code: typeName.toUpperCase() }, { name: new RegExp("^" + typeName + "$", "i") }],
+      });
+      if (!holderType) {
+        holderType = await HolderType.findOne({ eventId: event._id, isDefault: true, isActive: true });
+      }
+      if (holderType) { holderTypeId = holderType._id; holderTypeLabel = holderType.name; }
+    } catch (e) {
+      console.warn("[Integration] holder type lookup failed:", e.message);
+    }
+
+    const holderData = {
+      eventId: event._id, catId: category._id, phone,
+      email: user_email || undefined,
+      name: user_email ? user_email.split("@")[0] : `Devotee ${phone.slice(-4)}`,
+      holderType: holderTypeLabel, holderTypeId,
+      source: "third_party", issuedBy: null,
+    };
+
+    let holder;
+    try {
+      holder = await Holder.create(holderData);
+    } catch (e) {
+      if (e.code === 11000) {
+        holder = await Holder.findOne({ eventId: event._id, phone });
+        if (!holder) throw e;
+      } else { throw e; }
+    }
+
+    // ── Generate QR pass ────────────────────────────────────────────────────
+    const qrId = await qrService.generateQRId(event.eventCode, category.catCode);
+    const payload = qrService.createPayload(
+      { ...holder.toObject(), qrId }, event, category, entryPoints,
+    );
+    const { image: qrImage, signedPayload } = await qrService.generateQRCode(payload);
+
+    await QRPass.create({
+      qrId, holderId: holder._id, eventId: event._id, catId: category._id,
+      entryPoints: entryPoints.map((ep) => ep._id),
+      payloadSigned: signedPayload,
+      validFrom: event.dateStart, validUntil: event.dateEnd,
+      deliveryMethod: "third_party", deliveryStatus: "sent", deliveredAt: new Date(),
+    });
+
+    const venueLabel = venue ? ` at ${venue}` : "";
+    console.log(`[Integration] QR generated for ${phone} at event ${event.eventCode}${venueLabel} via third-party`);
+
+    await trySendWhatsApp(phone, qrImage, holder, event, entryPoints);
+
+    return res.status(200).json({
+      status: true, message: "QR code generated successfully",
+      qr_code: qrImage, qr_id: qrId,
+    });
+  } catch (error) {
+    console.error("[Integration] generateVolunteerQR error:", error);
+    return res.status(500).json({ status: false, message: "Failed to generate QR code" });
+  }
+};
+
+/**
+ * GET /api/integration/status
+ */
+exports.status = (req, res) => {
+  res.json({ status: true, message: "ISKCON Seva Pass API is operational", timestamp: new Date().toISOString() });
+};

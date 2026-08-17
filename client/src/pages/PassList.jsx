@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api, downloadQrPng, parseDate } from '../api.js';
+import { api, downloadQrPng, shareWhatsApp, parseDate } from '../api.js';
 import {
   ListIcon,
   DownloadIcon,
@@ -10,15 +10,6 @@ import {
 } from '../components/icons.jsx';
 
 const STATUS = ['', 'unused', 'used', 'revoked'];
-
-function whatsappUrl(phone, passToken, donorName) {
-  if (!phone) return '';
-  const digits = phone.replace(/\D/g, '');
-  const international = digits.length === 10 ? '91' + digits : digits;
-  const passUrl = `${window.location.origin}/pass?t=${passToken}`;
-  const text = `Hare Krishna ${donorName}! Here is your seva pass:\n\n${passUrl}`;
-  return `https://wa.me/${international}?text=${encodeURIComponent(text)}`;
-}
 
 export default function PassList() {
   const [passes, setPasses] = useState([]);
@@ -147,14 +138,12 @@ export default function PassList() {
                           </button>
                         )}
                         {p.phone && (
-                          <a
+                          <button
                             className="btn btn-ghost btn-sm"
-                            href={whatsappUrl(p.phone, p.token, p.donor_name)}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                            onClick={() => shareWhatsApp(p.id, p.phone, p.donor_name, p.token)}
                           >
                             <WhatsAppIcon size={14} />
-                          </a>
+                          </button>
                         )}
                       </div>
                     </td>
@@ -198,14 +187,12 @@ export default function PassList() {
                     </button>
                   )}
                   {p.phone && (
-                    <a
+                    <button
                       className="btn btn-ghost btn-sm"
-                      href={whatsappUrl(p.phone, p.token, p.donor_name)}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                      onClick={() => shareWhatsApp(p.id, p.phone, p.donor_name, p.token)}
                     >
                       <WhatsAppIcon size={14} /> WA
-                    </a>
+                    </button>
                   )}
                 </div>
               </div>

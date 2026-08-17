@@ -42,7 +42,7 @@ Gate: volunteer scans with iskcon-scanner → main system validates
 ### Integration with the main system
 - Seva Pass rewired from the wrong reference (QRsystembackend) to the **real** backend: `generate-volunteer-qr`
 - Passes store the main system's `qr_id` + QR image; the pass card and PNG download show **their** QR
-- Check-in endpoint matches scanned codes by bare QR id **or** by decoding their signed JWT
+- **Removed the app's check-in endpoint** (`POST /api/passes/:token/check-in`) + its smoke tests — the app is now issue-only; gate validation belongs to the main system's scanner
 - **Fixed the main system's blocker**: `deliveryMethod: "third_party"` wasn't in the QRPass model enum → every first-time claim 500'd. Added to enum → live pass issuing now works end-to-end
 
 ### WhatsApp delivery (main system)
@@ -54,6 +54,7 @@ Gate: volunteer scans with iskcon-scanner → main system validates
 
 ### Product simplification (per request)
 - **Removed Scan & Validate** page + `html5-qrcode` dep — gate validation belongs to the main system's scanner
+- **Removed the manual "Check in" button** from All Passes (client + app) — issue-only workflow
 - **Issue form = name + phone only** (everything else defaults server-side)
 - **PWA**: manifest, generated icons (`client/scripts/gen-icons.mjs`), service worker (network-first shell, never caches `/api`), installable on phones
 

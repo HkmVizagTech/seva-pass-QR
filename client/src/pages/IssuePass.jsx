@@ -1,19 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api, apiOrigin, downloadQrPng } from '../api.js';
+import { api, apiOrigin, downloadQrPng, shareWhatsApp } from '../api.js';
 import { QrIcon, DownloadIcon, ExternalIcon, CheckIcon, WhatsAppIcon } from '../components/icons.jsx';
 
 const PASS_TYPES = ['General', 'VIP', 'Donor', 'Volunteer', 'Staff', 'Media'];
 const EMPTY = { donor_name: '', phone: '', email: '', pass_type: 'General', event_id: '' };
-
-function whatsappUrl(phone, passToken, donorName) {
-  if (!phone) return '';
-  const digits = phone.replace(/\D/g, '');
-  const international = digits.length === 10 ? '91' + digits : digits;
-  const passUrl = `${window.location.origin}/pass?t=${passToken}`;
-  const text = `Hare Krishna ${donorName}! Here is your seva pass:\n\n${passUrl}`;
-  return `https://wa.me/${international}?text=${encodeURIComponent(text)}`;
-}
 
 export default function IssuePass() {
   const [form, setForm] = useState(EMPTY);
@@ -222,14 +213,12 @@ export default function IssuePass() {
                   <ExternalIcon size={15} /> Open card
                 </Link>
                 {created.phone && (
-                  <a
+                  <button
                     className="btn btn-ghost btn-sm"
-                    href={whatsappUrl(created.phone, created.token, created.donor_name)}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                    onClick={() => shareWhatsApp(created.id, created.phone, created.donor_name, created.token)}
                   >
                     <WhatsAppIcon size={15} /> WhatsApp
-                  </a>
+                  </button>
                 )}
               </div>
               <div className="sub" style={{ marginTop: 10 }}>

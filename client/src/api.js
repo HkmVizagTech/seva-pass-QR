@@ -84,6 +84,31 @@ export async function downloadQrPng(id, filename) {
   URL.revokeObjectURL(url);
 }
 
+export async function shareWhatsApp(id, phone, donorName, passToken) {
+  if (!phone) return;
+  const digits = phone.replace(/\D/g, '');
+  const international = digits.length === 10 ? '91' + digits : digits;
+  const passUrl = `${window.location.origin}/pass?t=${passToken}`;
+  const text = `Hare Krishna ${donorName}! Here is your seva pass:\n\n${passUrl}`;
+
+  try {
+    const res = await fetch(`${API_BASE}/api/passes/${id}/qr.png`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+    if (res.ok) {
+      const blob = await res.blob();
+      const file = new File([blob], `${donorName.replace(/\s+/g, '-')}-pass.png`, { type: 'image/png' });
+
+      if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ text, files: [file] });
+        return;
+      }
+    }
+  } catch { /* fallback below */ }
+
+  window.open(`https://wa.me/${international}?text=${encodeURIComponent(text)}`, '_blank');
+}
+
 export function parseDate(value) {
   if (!value) return null;
   if (value instanceof Date) return value;

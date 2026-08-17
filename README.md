@@ -1,6 +1,6 @@
 # Seva Pass QR
 
-A web app for devotees to issue QR entry passes to donors/invitees, validate them at the venue, and let guests view their pass card by scanning with any phone camera.
+A web app for devotees to issue QR entry passes to donors/invitees, and let guests view their pass card by scanning with any phone camera. Gate validation is handled by the main system's own scanner.
 
 - **Backend**: Node.js + Express + **MongoDB (MongoDB Atlas)** via Mongoose
 - **Frontend**: React + Vite
@@ -14,8 +14,7 @@ A web app for devotees to issue QR entry passes to donors/invitees, validate the
 - Pass types: General, VIP, Donor, Volunteer, Staff, Media
 - Events management
 - QR encodes a URL (`/pass?t=<token>`) — any phone camera opens a printable pass card
-- In-app camera scanner validates a pass and records check-in time
-- Pass list with search/filter, manual check-in, revoke, and PNG download
+- Pass list with search/filter, revoke, and PNG download
 - Dashboard stats (total / unused / checked-in / revoked / today / events / my quota)
 - Public pass card page (no login) that also prints as the physical pass
 - **Main-system integration (optional)** — pull QRs from the main ISKCON Seva Pass system (`HkmVizagTech/iskcon-seva-pass-backend`) via its third-party integration API; works standalone until configured
@@ -112,7 +111,7 @@ server/
   routes/
     auth.js             login, me, user management
     events.js           event CRUD (+ per-event pass counts)
-    passes.js           issue/list/check-in/revoke/QR PNG/WhatsApp send
+    passes.js           issue/list/revoke/QR PNG/WhatsApp send
     public.js           public pass card API (no auth)
     stats.js            dashboard stats
   services/
@@ -144,7 +143,6 @@ client/
 | GET    | `/api/passes/:id`           | yes  | Pass detail incl. QR SVG        |
 | GET    | `/api/passes/:id/qr.png`    | yes  | Download QR as PNG              |
 | POST   | `/api/passes/:id/send-whatsapp` | yes | Send QR to donor via WhatsApp |
-| POST   | `/api/passes/:token/check-in` | yes | Validate & check in             |
 | POST   | `/api/passes/:id/revoke`    | yes  | Revoke a pass                   |
 | GET    | `/api/stats`                | yes  | Dashboard counts + per-user quota |
 | GET    | `/api/public/passes/:token` | no   | Public pass card data           |
@@ -179,8 +177,7 @@ Notes:
 - The main system's QR is a signed JWT whose payload carries the QR id (`q`). Its gate also
   accepts a bare QR id, so this app's fallback rendering (and its own scanner matching)
   both work with the QR id alone.
-- Gate validation is the main system's job (its `iskcon-scanner` + `/api/scan`); Seva Pass
-  check-in is local only — there is no third-party "consume" endpoint on the main system.
+- Gate validation is the main system's job (its `iskcon-scanner` + `/api/scan`); this app is issue-only — there is no third-party "consume" endpoint on the main system.
 - Errors come back as `{ status: false, message }` with a 4xx/5xx status.
 
 ### Env vars for integration
@@ -196,5 +193,5 @@ MAIN_SYSTEM_EVENT_ID=EVT2026   # eventCode of the event to issue against
 1. Devotee logs in and creates an event (optional but recommended).
 2. Devotee issues a pass within their quota — a QR is generated instantly (or claimed from the main system); download the PNG, print the pass card (`/pass?t=<token>`), or later send it straight to the donor's WhatsApp.
 3. The donor scans the QR with any phone camera to see their pass card.
-4. At the venue, the main system's own scanner (`iskcon-scanner`) validates the QR at the gate; in this app, **Scan & Validate** also works for local passes and records the check-in timestamp.
+4. At the venue, the main system's own scanner (`iskcon-scanner`) validates the QR at the gate.
 5. When a pass is no longer needed, revoke it to free up quota for a new pass.
