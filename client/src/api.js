@@ -105,8 +105,23 @@ export async function shareWhatsApp(id, phone, donorName, passToken, qrSvgDataUr
     base64 = dataUrl.split(',')[1] || '';
   } catch {}
 
-  // Capacitor Share: write PNG to device cache, then share the file:// URI
-  if (base64) {
+    // Custom WhatsApp plugin: writes image to cache, opens WhatsApp directly with contact + image
+    if (base64) {
+      try {
+        const { registerPlugin } = await import('@capacitor/core');
+        const WhatsAppShare = registerPlugin('WhatsAppShare');
+        await WhatsAppShare.share({
+          data: base64,
+          phone: international,
+          text,
+          filename: `${donorName.replace(/\s+/g, '-')}-pass.png`,
+        });
+        return;
+      } catch (e) {
+        console.warn('WhatsAppShare plugin failed:', e);
+      }
+
+    // Capacitor Share fallback (opens share picker)
     try {
       const { Filesystem, Directory } = await import('@capacitor/filesystem');
       const { Share } = await import('@capacitor/share');
@@ -122,19 +137,6 @@ export async function shareWhatsApp(id, phone, donorName, passToken, qrSvgDataUr
         files: [writeResult.uri],
       });
       return;
-    } catch {}
-
-    // Web Share API fallback
-    try {
-      if (navigator.share) {
-        const binary = atob(base64);
-        const arr = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) arr[i] = binary.charCodeAt(i);
-        const blob = new Blob([arr], { type: 'image/png' });
-        const file = new File([blob], `${donorName.replace(/\s+/g, '-')}-pass.png`, { type: 'image/png' });
-        await navigator.share({ text, files: [file] });
-        return;
-      }
     } catch {}
   }
 
