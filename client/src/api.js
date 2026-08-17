@@ -90,20 +90,20 @@ export async function downloadQrPng(id, filename) {
   URL.revokeObjectURL(url);
 }
 
-export async function shareWhatsApp(id, phone, donorName, passToken) {
+export async function shareWhatsApp(id, phone, donorName, passToken, qrSvgDataUrl) {
   if (!phone) return;
   const digits = phone.replace(/\D/g, '');
   const international = digits.length === 10 ? '91' + digits : digits;
   const passUrl = `${siteOrigin()}/pass?t=${passToken}`;
   const text = `Hare Krishna ${donorName}! Here is your seva pass:\n\n${passUrl}`;
 
-  // Fetch the QR image via the public endpoint (no auth needed)
+  // Convert QR SVG to PNG blob client-side (no server fetch needed)
   let blob;
-  try {
-    const qrUrl = `${siteOrigin()}/api/public/passes/${passToken}/qr.png`;
-    const res = await fetch(qrUrl);
-    if (res.ok) blob = await res.blob();
-  } catch { /* continue without image */ }
+  if (qrSvgDataUrl) {
+    try {
+      blob = await svgToPngBlob(qrSvgDataUrl, 600);
+    } catch { /* continue without image */ }
+  }
 
   // Try native Capacitor Share (sends image + text to WhatsApp or any app)
   try {
@@ -136,6 +136,24 @@ function blobToBase64(blob) {
     };
     reader.onerror = reject;
     reader.readAsDataURL(blob);
+  });
+}
+
+function svgToPngBlob(svgDataUrl, size) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, size, size);
+      ctx.drawImage(img, 0, 0, size, size);
+      canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('toBlob failed'))), 'image/png');
+    };
+    img.onerror = () => reject(new Error('SVG load failed'));
+    img.src = svgDataUrl;
   });
 }
 

@@ -140,7 +140,7 @@ export default function PassList() {
                         {p.phone && (
                           <button
                             className="btn btn-ghost btn-sm"
-                            onClick={() => shareWhatsApp(p.id, p.phone, p.donor_name, p.token)}
+                            onClick={() => shareWhatsApp(p.id, p.phone, p.donor_name, p.token, p.qr_svg)}
                           >
                             <WhatsAppIcon size={14} />
                           </button>
@@ -189,7 +189,7 @@ export default function PassList() {
                   {p.phone && (
                     <button
                       className="btn btn-ghost btn-sm"
-                      onClick={() => shareWhatsApp(p.id, p.phone, p.donor_name, p.token)}
+                      onClick={() => shareWhatsApp(p.id, p.phone, p.donor_name, p.token, p.qr_svg)}
                     >
                       <WhatsAppIcon size={14} /> WA
                     </button>

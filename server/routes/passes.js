@@ -167,10 +167,13 @@ router.post('/', wrap(async (req, res) => {
       // content (used if the image is missing) is the id itself.
       qrContent = claimed.qrId || qrContent;
     } catch (err) {
+      // If the main system doesn't have this event, fall back to local QR.
+      // This allows events created only in the Seva Pass system to work.
       if (err instanceof MainSystemError) {
-        return res.status(err.status || 502).json({ error: `Main system: ${err.message}` });
+        console.warn(`[Passes] Main system claim failed (${err.message}), falling back to local QR`);
+      } else {
+        throw err;
       }
-      throw err;
     }
   }
 
