@@ -118,30 +118,11 @@ export async function shareWhatsApp(id, phone, donorName, passToken) {
       });
       return;
     }
-  } catch { /* try web share next */ }
-
-  // Try Web Share API (works in mobile browsers)
-  if (blob) {
-    try {
-      const file = new File([blob], `${donorName.replace(/\s+/g, '-')}-pass.png`, { type: 'image/png' });
-      if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-        await navigator.share({ files: [file], text });
-        return;
-      }
-    } catch { /* fallback */ }
+  } catch (e) {
+    console.warn('Capacitor Share failed, falling back to wa.me:', e);
   }
 
-  // Last resort: download image + open WhatsApp with text
-  if (blob) {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${donorName.replace(/\s+/g, '-')}-pass.png`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  }
+  // Fallback: open WhatsApp with text
   window.open(`https://wa.me/${international}?text=${encodeURIComponent(text)}`, '_blank');
 }
 
