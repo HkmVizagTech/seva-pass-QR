@@ -24,6 +24,7 @@ router.get('/', wrap(async (req, res) => {
         date: 1,
         created_by: 1,
         created_at: 1,
+        id: '$_id',
         pass_count: { $size: '$passes' },
       },
     },
