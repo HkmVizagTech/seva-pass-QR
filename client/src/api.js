@@ -96,65 +96,56 @@ export async function shareWhatsApp(id, phone, donorName, passToken, qrSvgDataUr
   const international = digits.length === 10 ? '91' + digits : digits;
   const passUrl = `${siteOrigin()}/pass?t=${passToken}`;
   const text = `Hare Krishna ${donorName}! Here is your seva pass:\n\n${passUrl}`;
+  const debug = [];
 
-  // Convert QR SVG to PNG blob client-side (no server fetch needed)
-  let blob;
-  if (qrSvgDataUrl) {
-    try {
-      blob = await svgToPngBlob(qrSvgDataUrl, 600);
-    } catch { /* continue without image */ }
+  // Step 1: Generate QR PNG using qrcode library
+  let base64 = '';
+  try {
+    const QRCode = await import('qrcode');
+    const dataUrl = await QRCode.toDataURL(passUrl, { width: 600, margin: 1 });
+    base64 = dataUrl.split(',')[1] || '';
+    debug.push(`QR OK: ${base64.length} chars`);
+  } catch (e) {
+    debug.push(`QR FAIL: ${e.message}`);
   }
 
-  // Try native Capacitor Share (sends image + text to WhatsApp or any app)
-  try {
-    if (blob) {
+  // Step 2: Capacitor Share with image
+  if (base64) {
+    try {
       const { Share } = await import('@capacitor/share');
-      const base64 = await blobToBase64(blob);
       await Share.share({
         title: `${donorName} — Seva Pass`,
         text,
         files: [{ data: base64, type: 'image/png', filename: `${donorName.replace(/\s+/g, '-')}-pass.png` }],
       });
+      debug.push('SHARE OK');
       return;
+    } catch (e) {
+      debug.push(`SHARE FAIL: ${e.message || e}`);
     }
-  } catch (e) {
-    console.warn('Capacitor Share failed, falling back to wa.me:', e);
   }
 
-  // Fallback: open WhatsApp with text
+  // Step 3: navigator.share fallback
+  if (base64 && navigator.share) {
+    try {
+      const binary = atob(base64);
+      const arr = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) arr[i] = binary.charCodeAt(i);
+      const blob = new Blob([arr], { type: 'image/png' });
+      const file = new File([blob], `${donorName.replace(/\s+/g, '-')}-pass.png`, { type: 'image/png' });
+      await navigator.share({ text, files: [file] });
+      debug.push('NAVSHARE OK');
+      return;
+    } catch (e) {
+      debug.push(`NAVSHARE FAIL: ${e.message || e}`);
+    }
+  }
+
+  // Show debug info so user can report what happened
+  alert('Share debug:\n' + debug.join('\n'));
+
+  // Fallback: WhatsApp text
   window.open(`https://wa.me/${international}?text=${encodeURIComponent(text)}`, '_blank');
-}
-
-function blobToBase64(blob) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const dataUrl = reader.result;
-      // Strip data URL prefix — Capacitor Share expects raw base64
-      const base64 = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
-      resolve(base64);
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
-}
-
-function svgToPngBlob(svgDataUrl, size) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = size;
-      canvas.height = size;
-      const ctx = canvas.getContext('2d');
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, size, size);
-      ctx.drawImage(img, 0, 0, size, size);
-      canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('toBlob failed'))), 'image/png');
-    };
-    img.onerror = () => reject(new Error('SVG load failed'));
-    img.src = svgDataUrl;
-  });
 }
 
 export function parseDate(value) {
