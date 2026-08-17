@@ -3,9 +3,15 @@ const TOKEN_KEY = 'seva_token';
 // The backend origin for native (Capacitor) builds. When unset the app talks
 // to the same origin that serves it (Vite dev proxy / deployed domain).
 const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
+// The public site URL where pass card pages are served (Vercel).
+const SITE_BASE = (import.meta.env.VITE_SITE_URL || '').replace(/\/+$/, '');
 
 export function apiOrigin() {
   return API_BASE || window.location.origin;
+}
+
+export function siteOrigin() {
+  return SITE_BASE || window.location.origin;
 }
 
 export function getToken() {
@@ -88,8 +94,7 @@ export async function shareWhatsApp(id, phone, donorName, passToken) {
   if (!phone) return;
   const digits = phone.replace(/\D/g, '');
   const international = digits.length === 10 ? '91' + digits : digits;
-  const origin = API_BASE || window.location.origin;
-  const passUrl = `${origin}/pass?t=${passToken}`;
+  const passUrl = `${siteOrigin()}/pass?t=${passToken}`;
   const text = `Hare Krishna ${donorName}! Here is your seva pass:\n\n${passUrl}`;
 
   // Fetch the QR image
