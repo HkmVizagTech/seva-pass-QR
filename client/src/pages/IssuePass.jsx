@@ -157,9 +157,14 @@ export default function IssuePass() {
               Event (optional)
               <select value={form.event_id} onChange={set('event_id')}>
                 <option value="">No event selected</option>
-                {events.map((ev) => (
-                  <option key={ev.id} value={ev.id}>{ev.name}</option>
-                ))}
+                {events
+                  .filter((ev) => {
+                    if (!ev.date) return true;
+                    return new Date(ev.date + 'T23:59:59') >= new Date(new Date().toDateString());
+                  })
+                  .map((ev) => (
+                    <option key={ev.id} value={ev.id}>{ev.name}</option>
+                  ))}
               </select>
             </label>
 
