@@ -97,12 +97,11 @@ export async function shareWhatsApp(id, phone, donorName, passToken) {
   const passUrl = `${siteOrigin()}/pass?t=${passToken}`;
   const text = `Hare Krishna ${donorName}! Here is your seva pass:\n\n${passUrl}`;
 
-  // Fetch the QR image
+  // Fetch the QR image via the public endpoint (no auth needed)
   let blob;
   try {
-    const res = await fetch(`${API_BASE}/api/passes/${id}/qr.png`, {
-      headers: { Authorization: `Bearer ${getToken()}` },
-    });
+    const qrUrl = `${siteOrigin()}/api/public/passes/${passToken}/qr.png`;
+    const res = await fetch(qrUrl);
     if (res.ok) blob = await res.blob();
   } catch { /* continue without image */ }
 
@@ -127,9 +126,15 @@ export async function shareWhatsApp(id, phone, donorName, passToken) {
 }
 
 function blobToBase64(blob) {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onloadend = () => resolve(reader.result);
+    reader.onloadend = () => {
+      const dataUrl = reader.result;
+      // Strip data URL prefix — Capacitor Share expects raw base64
+      const base64 = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
+      resolve(base64);
+    };
+    reader.onerror = reject;
     reader.readAsDataURL(blob);
   });
 }
