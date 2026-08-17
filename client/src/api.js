@@ -88,25 +88,64 @@ export async function shareWhatsApp(id, phone, donorName, passToken) {
   if (!phone) return;
   const digits = phone.replace(/\D/g, '');
   const international = digits.length === 10 ? '91' + digits : digits;
-  const passUrl = `${window.location.origin}/pass?t=${passToken}`;
+  const origin = API_BASE || window.location.origin;
+  const passUrl = `${origin}/pass?t=${passToken}`;
   const text = `Hare Krishna ${donorName}! Here is your seva pass:\n\n${passUrl}`;
 
+  // Fetch the QR image
+  let blob;
   try {
     const res = await fetch(`${API_BASE}/api/passes/${id}/qr.png`, {
       headers: { Authorization: `Bearer ${getToken()}` },
     });
-    if (res.ok) {
-      const blob = await res.blob();
-      const file = new File([blob], `${donorName.replace(/\s+/g, '-')}-pass.png`, { type: 'image/png' });
+    if (res.ok) blob = await res.blob();
+  } catch { /* continue without image */ }
 
+  // Try native Capacitor Share (sends image + text to WhatsApp or any app)
+  try {
+    if (blob) {
+      const { Share } = await import('@capacitor/share');
+      const base64 = await blobToBase64(blob);
+      await Share.share({
+        title: `${donorName} — Seva Pass`,
+        text,
+        files: [{ data: base64, type: 'image/png', filename: `${donorName.replace(/\s+/g, '-')}-pass.png` }],
+      });
+      return;
+    }
+  } catch { /* try web share next */ }
+
+  // Try Web Share API (works in mobile browsers)
+  if (blob) {
+    try {
+      const file = new File([blob], `${donorName.replace(/\s+/g, '-')}-pass.png`, { type: 'image/png' });
       if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-        await navigator.share({ text, files: [file] });
+        await navigator.share({ files: [file], text });
         return;
       }
-    }
-  } catch { /* fallback below */ }
+    } catch { /* fallback */ }
+  }
 
+  // Last resort: download image + open WhatsApp with text
+  if (blob) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${donorName.replace(/\s+/g, '-')}-pass.png`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
   window.open(`https://wa.me/${international}?text=${encodeURIComponent(text)}`, '_blank');
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result);
+    reader.readAsDataURL(blob);
+  });
 }
 
 export function parseDate(value) {
