@@ -105,14 +105,21 @@ export async function shareWhatsApp(id, phone, donorName, passToken, qrSvgDataUr
     base64 = dataUrl.split(',')[1] || '';
   } catch {}
 
-  // Capacitor Share with image
+  // Capacitor Share: write PNG to device cache, then share the file:// URI
   if (base64) {
     try {
+      const { Filesystem, Directory } = await import('@capacitor/filesystem');
       const { Share } = await import('@capacitor/share');
+      const filename = `${donorName.replace(/\s+/g, '-')}-pass.png`;
+      const writeResult = await Filesystem.writeFile({
+        path: filename,
+        data: base64,
+        directory: Directory.Cache,
+      });
       await Share.share({
         title: `${donorName} — Seva Pass`,
         text,
-        files: [`data:image/png;base64,${base64}`],
+        files: [writeResult.uri],
       });
       return;
     } catch {}
