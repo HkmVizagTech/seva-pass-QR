@@ -12,8 +12,9 @@ export default function Events() {
   const [syncResult, setSyncResult] = useState('');
 
   useEffect(() => {
+    // The app shows only live or upcoming events.
     api
-      .events()
+      .events({ live: 1 })
       .then(({ events }) => setEvents(events))
       .catch((e) => setError(e.message));
     api

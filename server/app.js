@@ -9,6 +9,7 @@ import eventRoutes from './routes/events.js';
 import passRoutes from './routes/passes.js';
 import statsRoutes from './routes/stats.js';
 import publicRoutes from './routes/public.js';
+import preacherRoutes from './routes/preachers.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -29,6 +30,7 @@ export function createApp() {
   app.use('/api/events', requireAuth, eventRoutes);
   app.use('/api/passes', requireAuth, passRoutes);
   app.use('/api/stats', requireAuth, statsRoutes);
+  app.use('/api/preachers', preacherRoutes);
   app.use('/api/public', publicRoutes);
 
   app.use((err, req, res, next) => {

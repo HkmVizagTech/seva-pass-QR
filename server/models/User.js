@@ -8,6 +8,9 @@ const userSchema = new mongoose.Schema(
     name: { type: String, required: true, trim: true },
     role: { type: String, enum: ['admin', 'devotee'], default: 'devotee' },
     quota: { type: Number, default: () => parseInt(process.env.DEVOTEE_DEFAULT_QUOTA, 10) || 30 },
+    // The devotee's 4-character preacher code on the main ISKCON system (e.g.
+    // MKGD). Passes issued by this devotee are attributed to that preacher.
+    short_code: { type: String, trim: true, uppercase: true, default: '' },
   },
   {
     timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' },

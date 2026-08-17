@@ -68,8 +68,88 @@ function startMainStub() {
           res.writeHead(status, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify(obj));
         };
-        if (req.headers['x-api-key'] !== 'test-integration-key') {
+        // The integration endpoints require the API key; the preacher endpoints
+        // authenticate with the preacher's own JWT instead.
+        if (req.url.startsWith('/api/integration/') && req.headers['x-api-key'] !== 'test-integration-key') {
           return send(401, { status: false, message: 'Invalid API key' });
+        }
+
+        // POST /api/preachers/login — preacher credentials
+        if (req.url === '/api/preachers/login' && req.method === 'POST') {
+          let parsed;
+          try {
+            parsed = JSON.parse(body || '{}');
+          } catch {
+            return send(400, { status: false, message: 'Invalid JSON' });
+          }
+          if (parsed.password !== 'preacher-pass') {
+            return send(401, { status: false, message: 'Invalid credentials' });
+          }
+          return send(200, {
+            success: true,
+            token: 'stub-preacher-token',
+            preacher: {
+              id: 'preacher_1',
+              name: 'Mukunda Gauranga Dasa',
+              shortCode: 'MKGD',
+              role: 'preacher',
+            },
+          });
+        }
+
+        // GET /api/preachers/me/holders — the preacher's own holders
+        if (req.url.startsWith('/api/preachers/me/holders') && req.method === 'GET') {
+          if (req.headers.authorization !== 'Bearer stub-preacher-token') {
+            return send(401, { error: 'Not authorized, token failed' });
+          }
+          return send(200, {
+            holders: [
+              {
+                _id: 'h1',
+                name: 'Rama Das',
+                phone: '9876500000',
+                catId: { name: 'Sponsor', catCode: 'SP' },
+                eventId: { name: 'Test Event', eventCode: 'TSTP' },
+                qrPass: {
+                  qrId: 'ISK-TSTP-SP-0001',
+                  status: 'active',
+                  deliveryStatus: 'sent',
+                  redemptionHistory: [
+                    { epId: 'epb1', result: 'granted', scannedAt: '2026-08-17T10:00:00Z' },
+                  ],
+                },
+                bahumanaReceived: true,
+                bahumanaAt: '2026-08-17T10:00:00Z',
+              },
+            ],
+            pagination: { total: 1, page: 1, pages: 1 },
+          });
+        }
+
+        // GET /api/preachers/me/stats
+        if (req.url.startsWith('/api/preachers/me/stats') && req.method === 'GET') {
+          if (req.headers.authorization !== 'Bearer stub-preacher-token') {
+            return send(401, { error: 'Not authorized, token failed' });
+          }
+          return send(200, {
+            totalHolders: 5,
+            activePasses: 4,
+            scannedPasses: 2,
+            scanRate: '50.0',
+            byEvent: [{ eventName: 'Test Event', eventCode: 'TSTP', count: 5 }],
+          });
+        }
+
+        // GET /api/qr/:qrId/image — public QR image (proxied for preachers)
+        const qrImgMatch = req.url.match(/^\/api\/qr\/([^/]+)\/image$/);
+        if (qrImgMatch && req.method === 'GET') {
+          res.writeHead(200, { 'Content-Type': 'image/png' });
+          return res.end(
+            Buffer.from(
+              'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+              'base64'
+            )
+          );
         }
 
         // GET /api/integration/events/:eventCode/venues
@@ -103,10 +183,11 @@ function startMainStub() {
         if (!parsed.event_id || !parsed.user_phone_number) {
           return send(400, { status: false, message: 'event_id and user_phone_number are required' });
         }
-        // If venue was sent, echo it in the qr_id so we can verify forwarding
+        // If venue / preacher were sent, echo them in the qr_id so we can verify forwarding
         const venueLabel = parsed.venue ? `-V:${parsed.venue.replace(/\s+/g, '')}` : '';
+        const preacherLabel = parsed.preacher ? `-P:${parsed.preacher.replace(/\s+/g, '')}` : '';
         const digits = String(parsed.user_phone_number).replace(/\D/g, '');
-        const qrId = `ISK-${parsed.event_id}-GN-${digits.slice(-4)}01${venueLabel}`;
+        const qrId = `ISK-${parsed.event_id}-GN-${digits.slice(-4)}01${venueLabel}${preacherLabel}`;
         send(200, {
           status: true,
           message: 'QR code generated successfully',
@@ -348,6 +429,69 @@ try {
   // PNG download serves the main system's image for integrated passes
   const msPng = await fetch(`${BASE}/api/passes/${msPass.data.pass.id}/qr.png`, { headers: { Authorization: `Bearer ${token2b}` } });
   assert(msPng.status === 200 && msPng.headers.get('content-type') === 'image/png', 'PNG download serves main-system image');
+
+  // ── Preacher flow: login via main system, my holders, stats, QR image ──
+  const preacherLogin = await req('POST', '/api/auth/preacher-login', {
+    body: { email: 'mk@example.com', password: 'preacher-pass' },
+  });
+  assert(preacherLogin.status === 200 && preacherLogin.data.token, 'preacher login via main system');
+  const pToken = preacherLogin.data.token;
+  assert(
+    preacherLogin.data.user.role === 'preacher' && preacherLogin.data.user.shortCode === 'MKGD',
+    'preacher profile returned from main system'
+  );
+
+  const wrongPreacher = await req('POST', '/api/auth/preacher-login', {
+    body: { email: 'mk@example.com', password: 'wrong' },
+  });
+  assert(wrongPreacher.status === 401, 'bad preacher credentials rejected');
+
+  const pMe = await req('GET', '/api/auth/me', { token: pToken });
+  assert(
+    pMe.status === 200 && pMe.data.user.role === 'preacher' && pMe.data.user.shortCode === 'MKGD',
+    'preacher /me served from session'
+  );
+
+  const myHolders = await req('GET', '/api/preachers/me/holders?category=SP&bahumana=yes', { token: pToken });
+  assert(myHolders.status === 200 && myHolders.data.holders.length === 1, 'preacher my holders fetched');
+  assert(myHolders.data.holders[0].bahumanaReceived === true, 'bahumanaReceived flag present');
+  assert(myHolders.data.holders[0].catId.catCode === 'SP', 'category populated on holder');
+
+  const pStats = await req('GET', '/api/stats', { token: pToken });
+  assert(
+    pStats.status === 200 && pStats.data.stats.preacher === true && pStats.data.stats.totalHolders === 5,
+    'preacher stats come from main system'
+  );
+
+  const forbidden = await req('GET', '/api/preachers/me/holders', { token: token2b });
+  assert(forbidden.status === 403, 'non-preacher blocked from preacher endpoints');
+
+  // A preacher-issued pass is attributed to them on the main system
+  const pPass = await req('POST', '/api/passes', {
+    token: pToken,
+    body: { donor_name: 'Jaya Das', phone: '+91 9234567890', event_id: evWithCode.data.event._id },
+  });
+  assert(pPass.status === 201 && pPass.data.pass.source === 'main-system', 'preacher issues a pass');
+
+  // An app devotee with a preacher short code gets their passes attributed too
+  const codeUser = await req('POST', '/api/auth/users', {
+    token: token2b,
+    body: { username: 'mkdevotee', password: 'pass1234', name: 'Mukunda Devotee', role: 'devotee', quota: 5, short_code: 'MKGD' },
+  });
+  assert(codeUser.status === 201 && codeUser.data.user.short_code === 'MKGD', 'devotee created with preacher short code');
+  const codeLogin = await req('POST', '/api/auth/login', { body: { username: 'mkdevotee', password: 'pass1234' } });
+  const codePass = await req('POST', '/api/passes', {
+    token: codeLogin.data.token,
+    body: { donor_name: 'Vasudeva Das', phone: '+91 9345678901', event_id: evWithCode.data.event._id },
+  });
+  assert(codePass.status === 201 && codePass.data.pass.source === 'main-system', 'devotee with code issues a pass');
+  assert(codePass.data.pass.main_qr_id.includes('P:MKGD'), 'short code forwarded as preacher attribution');
+
+  // QR image proxied for the preacher
+  const pQr = await fetch(`${BASE}/api/preachers/qr/ISK-TSTP-SP-0001/image`, {
+    headers: { Authorization: `Bearer ${pToken}` },
+  });
+  assert(pQr.status === 200 && pQr.headers.get('content-type') === 'image/png', 'preacher QR image proxied');
 
   console.log('\nALL SMOKE TESTS PASSED');
 } catch (e) {

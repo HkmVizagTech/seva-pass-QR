@@ -3,7 +3,7 @@ import { api } from '../api.js';
 import { UsersIcon, PlusIcon, EditIcon } from '../components/icons.jsx';
 
 const ROLES = ['admin', 'devotee'];
-const EMPTY = { username: '', password: '', name: '', role: 'devotee', quota: 30 };
+const EMPTY = { username: '', password: '', name: '', role: 'devotee', quota: 30, short_code: '' };
 
 export default function Users() {
   const [users, setUsers] = useState([]);
@@ -46,7 +46,7 @@ export default function Users() {
 
   const startEdit = (u) => {
     setEditing(u.id);
-    setEditForm({ name: u.name, role: u.role, quota: u.quota, password: '' });
+    setEditForm({ name: u.name, role: u.role, quota: u.quota, short_code: u.short_code || '', password: '' });
     setError('');
     setSuccess('');
   };
@@ -107,6 +107,18 @@ export default function Users() {
               Password *
               <input type="password" value={form.password} onChange={set('password')} required placeholder="Temporary password" autoComplete="new-password" />
             </label>
+            <label>
+              Preacher code (short code on main site, e.g. MKGD)
+              <input
+                value={form.short_code}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, short_code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10) }))
+                }
+                placeholder="e.g. MKGD"
+                autoComplete="off"
+              />
+              <span className="sub" style={{ fontSize: '0.75rem' }}>Passes issued by this devotee are attributed to this preacher.</span>
+            </label>
             <div className="form-row">
               <label>
                 Role
@@ -137,6 +149,7 @@ export default function Users() {
                 <thead>
                   <tr>
                     <th>Name</th>
+                    <th>Code</th>
                     <th>Role</th>
                     <th>Quota</th>
                     <th>Used</th>
@@ -153,6 +166,16 @@ export default function Users() {
                               <label>
                                 Name
                                 <input value={editForm.name} onChange={editSet('name')} required />
+                              </label>
+                              <label>
+                                Code
+                                <input
+                                  value={editForm.short_code}
+                                  onChange={(e) =>
+                                    setEditForm((f) => ({ ...f, short_code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10) }))
+                                  }
+                                  placeholder="MKGD"
+                                />
                               </label>
                               <label>
                                 Role
@@ -182,6 +205,13 @@ export default function Users() {
                           <td>
                             {u.name}
                             <div className="sub">@{u.username}</div>
+                          </td>
+                          <td>
+                            {u.short_code ? (
+                              <span className="badge badge-main" style={{ fontFamily: 'monospace', letterSpacing: 1 }}>{u.short_code}</span>
+                            ) : (
+                              <span className="sub">—</span>
+                            )}
                           </td>
                           <td><span className={`badge ${u.role === 'admin' ? 'badge-main' : ''}`}>{u.role}</span></td>
                           <td>{u.quota}</td>

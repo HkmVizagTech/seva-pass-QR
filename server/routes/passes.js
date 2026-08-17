@@ -6,7 +6,7 @@ import Pass, { PASS_TYPES, PASS_STATUSES } from '../models/Pass.js';
 import Event from '../models/Event.js';
 import User from '../models/User.js';
 import { isWhatsAppConfigured, sendPassQrWhatsApp } from '../services/whatsapp.js';
-import { isMainSystemConfigured, claimQr, fetchVenues, MainSystemError } from '../services/mainSystem.js';
+import { isMainSystemConfigured, claimQr, fetchCategories, fetchVenues, MainSystemError } from '../services/mainSystem.js';
 
 const router = Router();
 
@@ -99,6 +99,18 @@ router.get('/venues', wrap(async (req, res) => {
   res.json({ venues });
 }));
 
+// Fetch the pass types (categories) available for an event from the main
+// system, so the Issue Pass form can offer the event's real types instead of
+// a static list. Empty array on failure (falls back to the static list).
+router.get('/categories', wrap(async (req, res) => {
+  const { event_code = '' } = req.query;
+  if (!event_code) {
+    return res.json({ categories: [] });
+  }
+  const categories = await fetchCategories(event_code);
+  res.json({ categories });
+}));
+
 async function quotaUsed(userId) {
   return Pass.countDocuments({ issued_by: userId, status: { $ne: 'revoked' } });
 }
@@ -112,6 +124,9 @@ router.post('/', wrap(async (req, res) => {
     notes = '',
     event_id = null,
     venue = '',
+    // `category` is the pass type chosen from the event's categories on the
+    // main system (a category name or code). Falls back to pass_type.
+    category = '',
     valid_from = '',
     valid_until = '',
     baseUrl = '',
@@ -120,21 +135,27 @@ router.post('/', wrap(async (req, res) => {
   if (!donor_name) {
     return res.status(400).json({ error: 'Donor / invitee name is required' });
   }
-  if (!PASS_TYPES.includes(pass_type)) {
-    return res.status(400).json({ error: `pass_type must be one of: ${PASS_TYPES.join(', ')}` });
-  }
+  // Pass types come from the selected event's categories (e.g. Invitee, Sponsor,
+  // General Public), so no fixed allow-list — just require a non-empty value.
+  const passType = (pass_type || '').trim() || 'General';
   if (event_id && !mongoose.isValidObjectId(event_id)) {
     return res.status(400).json({ error: 'Invalid event_id' });
   }
 
-  // ---- Devotee quota: each devotee may hold up to `quota` non-revoked passes ----
-  const user = await User.findById(req.user.id);
-  const quota = user?.quota || 30;
-  const used = await quotaUsed(req.user.id);
-  if (used >= quota) {
-    return res.status(403).json({
-      error: `Quota exceeded: ${used} of ${quota} passes already issued. Revoke an unused pass to free up quota.`,
-    });
+  // ---- Devotee quota: each app devotee may hold up to `quota` non-revoked passes.
+  // Preachers (main-system devotees) are not quota-limited — the main system
+  // governs their issuance. The app user is also loaded for preachers' short
+  // code attribution below.
+  let appUser = null;
+  if (req.user.role !== 'preacher') {
+    appUser = await User.findById(req.user.id);
+    const quota = appUser?.quota || 30;
+    const used = await quotaUsed(req.user.id);
+    if (used >= quota) {
+      return res.status(403).json({
+        error: `Quota exceeded: ${used} of ${quota} passes already issued. Revoke an unused pass to free up quota.`,
+      });
+    }
   }
 
   const token = crypto.randomBytes(16).toString('hex');
@@ -159,7 +180,22 @@ router.post('/', wrap(async (req, res) => {
       eventCode = ev?.event_code || '';
     }
     try {
-      const claimed = await claimQr({ phone: phone.trim(), name: donor_name.trim(), email: email.trim(), eventCode, venue: venue || '' });
+      const claimed = await claimQr({
+        phone: phone.trim(),
+        name: donor_name.trim(),
+        email: email.trim(),
+        eventCode,
+        venue: venue || '',
+        category: (category || passType).trim(),
+        // Preachers get their passes attributed to them on the main system,
+        // so they show up under that preacher's "My Passes". App devotees are
+        // attributed by their 4-char preacher code (the link between the two).
+        preacher:
+          req.user.role === 'preacher'
+            ? req.user.name || ''
+            : (appUser?.short_code || '').trim(),
+        preacherId: req.user.role === 'preacher' ? req.user.id || null : null,
+      });
       source = 'main-system';
       recipientId = claimed.qrId || null;
       qrToken = claimed.qrId || '';
@@ -183,7 +219,7 @@ router.post('/', wrap(async (req, res) => {
     donor_name: donor_name.trim(),
     phone: phone.trim(),
     email: email.trim(),
-    pass_type,
+    pass_type: passType,
     notes: notes.trim(),
     qr_content: qrContent,
     source,
@@ -191,7 +227,9 @@ router.post('/', wrap(async (req, res) => {
     qr_token: qrToken,
     main_qr_image: mainQrImage,
     event_id: event_id || null,
-    issued_by: req.user.id,
+    // Preacher-issued passes are attributed on the main system (holder.preacherId)
+    // — their id isn't an app user, so don't store it as issued_by.
+    issued_by: req.user.role === 'preacher' ? null : req.user.id,
     valid_from: valid_from || null,
     valid_until: valid_until || null,
   });

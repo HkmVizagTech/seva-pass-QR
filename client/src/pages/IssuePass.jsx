@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api, apiOrigin, downloadQrPng, shareWhatsApp } from '../api.js';
-import { QrIcon, DownloadIcon, ExternalIcon, CheckIcon, WhatsAppIcon } from '../components/icons.jsx';
+import { api, siteOrigin, downloadQrPng, shareWhatsApp } from '../api.js';
+import { QrIcon, DownloadIcon, ExternalIcon, CheckIcon, WhatsAppIcon, CalendarIcon } from '../components/icons.jsx';
 
 const PASS_TYPES = ['General', 'VIP', 'Donor', 'Volunteer', 'Staff', 'Media'];
 const EMPTY = { donor_name: '', phone: '', email: '', pass_type: 'General', event_id: '' };
@@ -9,23 +9,36 @@ const EMPTY = { donor_name: '', phone: '', email: '', pass_type: 'General', even
 export default function IssuePass() {
   const [form, setForm] = useState(EMPTY);
   const [events, setEvents] = useState([]);
+  const [loaded, setLoaded] = useState(false);
   const [created, setCreated] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [quota, setQuota] = useState(null);
   const [venues, setVenues] = useState([]);
   const [selectedVenue, setSelectedVenue] = useState('');
+  const [categories, setCategories] = useState([]);
 
   useEffect(() => {
     api
       .stats()
       .then(({ stats }) => setQuota(stats.quota))
       .catch(() => {});
+    // Only live / upcoming events are offered for issuing.
     api
-      .events()
-      .then(({ events }) => setEvents(events))
-      .catch(() => {});
+      .events({ live: 1 })
+      .then(({ events }) => {
+        setEvents(events || []);
+        // If exactly one event is running, jump straight to the form for it.
+        if (events?.length === 1) {
+          setForm((f) => ({ ...f, event_id: events[0].id }));
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoaded(true));
   }, []);
+
+  const selectedEvent = events.find((e) => e.id === form.event_id) || null;
+  const multiple = events.length > 1;
 
   // Fetch venues when an event with an event_code is selected
   useEffect(() => {
@@ -52,6 +65,49 @@ export default function IssuePass() {
       });
   }, [form.event_id, events]);
 
+  // Fetch the pass types (categories) available for the selected event, so the
+  // devotee picks from the event's real types instead of a static list. Defaults
+  // to the "Invitee" type when the event has one (the app's main use case),
+  // else General, else the first type. Falls back to the static list if the
+  // main system is unreachable or the event has no code.
+  useEffect(() => {
+    if (!form.event_id) {
+      setCategories([]);
+      return;
+    }
+    const ev = events.find((e) => e.id === form.event_id);
+    if (!ev?.event_code) {
+      setCategories([]);
+      return;
+    }
+    let cancelled = false;
+    api
+      .categories(ev.event_code)
+      .then(({ categories }) => {
+        if (cancelled) return;
+        setCategories(categories || []);
+        setForm((f) => {
+          // Only auto-select when the devotee hasn't picked a type yet.
+          if (f.pass_type) return f;
+          const list = categories || [];
+          const invitee = list.find(
+            (c) => /invitee/i.test(c.name || '') || (c.catCode || '').toUpperCase() === 'INV'
+          );
+          const general = list.find(
+            (c) => /general/i.test(c.name || '') || (c.catCode || '').toUpperCase() === 'GN'
+          );
+          const pick = invitee || general || list[0];
+          return pick ? { ...f, pass_type: pick.name } : f;
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setCategories([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [form.event_id, events]);
+
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
 
   const submit = async (e) => {
@@ -66,7 +122,8 @@ export default function IssuePass() {
         pass_type: form.pass_type,
         event_id: form.event_id || null,
         venue: selectedVenue || '',
-        baseUrl: apiOrigin(),
+        // Pass-card links must point at the public site, not the API host.
+        baseUrl: siteOrigin(),
       });
       setCreated(pass);
       setForm(EMPTY);
@@ -77,6 +134,68 @@ export default function IssuePass() {
       setLoading(false);
     }
   };
+
+  if (!loaded) return <div className="loading">Loading…</div>;
+
+  // No live events — nothing to issue against.
+  if (events.length === 0) {
+    return (
+      <div className="fade-up">
+        <header className="page-header">
+          <div className="page-title">
+            <span className="title-icon"><QrIcon size={22} /></span>
+            <div>
+              <h1>Issue Pass</h1>
+              <p>Enter the devotee's name and phone to get their QR pass</p>
+            </div>
+          </div>
+        </header>
+        <div className="panel" style={{ textAlign: 'center', padding: '40px 20px' }}>
+          <CalendarIcon size={40} style={{ opacity: 0.35, marginBottom: 10 }} />
+          <h2 style={{ margin: '0 0 6px' }}>No live events right now</h2>
+          <p className="muted" style={{ margin: 0 }}>
+            Passes can be issued only for live or upcoming events. Check back when a festival is scheduled.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Multiple live events — the devotee picks the event before any form shows.
+  if (multiple && !form.event_id) {
+    return (
+      <div className="fade-up">
+        <header className="page-header">
+          <div className="page-title">
+            <span className="title-icon"><CalendarIcon size={22} /></span>
+            <div>
+              <h1>Select an event</h1>
+              <p>Choose which event this pass is for</p>
+            </div>
+          </div>
+        </header>
+        <div className="ep-grid" style={{ display: 'grid', gap: 10 }}>
+          {events.map((ev) => (
+            <button
+              key={ev.id}
+              className="ep-chip event-pick"
+              onClick={() => {
+                setCreated(null);
+                setForm((f) => ({ ...f, event_id: ev.id, pass_type: '' }));
+              }}
+              style={{ textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', padding: '16px' }}
+            >
+              <span>
+                <span className="ep-name" style={{ fontSize: '1rem', fontWeight: 600 }}>{ev.name}</span>
+                {ev.location && <span className="ep-type" style={{ display: 'block', opacity: 0.7, fontSize: '0.8rem' }}>{ev.location}</span>}
+              </span>
+              <span className="badge" style={{ flexShrink: 0 }}>{ev.status || 'live'}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   const pct = quota ? Math.round((quota.used / quota.limit) * 100) : 0;
 
@@ -91,6 +210,21 @@ export default function IssuePass() {
           </div>
         </div>
       </header>
+
+      {multiple && selectedEvent && (
+        <div className="alert" style={{ margin: '0 0 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+          <span>
+            <b>Event:</b> {selectedEvent.name}
+            {selectedEvent.location ? ` · ${selectedEvent.location}` : ''}
+          </span>
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={() => setForm((f) => ({ ...f, event_id: '', pass_type: '' }))}
+          >
+            Change
+          </button>
+        </div>
+      )}
 
       <div className="two-col">
         <section className="panel">
@@ -138,26 +272,14 @@ export default function IssuePass() {
               <label>
                 Pass type
                 <select value={form.pass_type} onChange={set('pass_type')}>
-                  {PASS_TYPES.map((t) => (
-                    <option key={t} value={t}>{t}</option>
+                  {(categories.length > 0 ? categories : PASS_TYPES.map((t) => ({ name: t }))).map((c) => (
+                    <option key={c.name} value={c.name}>
+                      {c.catCode ? `${c.name} (${c.catCode})` : c.name}
+                    </option>
                   ))}
                 </select>
               </label>
             </div>
-            <label>
-              Event (optional)
-              <select value={form.event_id} onChange={set('event_id')}>
-                <option value="">No event selected</option>
-                {events
-                  .filter((ev) => {
-                    if (!ev.date) return true;
-                    return new Date(ev.date + 'T23:59:59') >= new Date(new Date().toDateString());
-                  })
-                  .map((ev) => (
-                    <option key={ev.id} value={ev.id}>{ev.name}</option>
-                  ))}
-              </select>
-            </label>
 
             {venues.length > 0 && (
               <div className="ep-select">

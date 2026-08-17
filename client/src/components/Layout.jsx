@@ -51,7 +51,12 @@ export default function Layout() {
 
   const closeNav = () => setNavOpen(false);
   const isAdmin = user?.role === 'admin';
-  const items = NAV_ITEMS.filter((i) => !i.adminOnly || isAdmin);
+  const isPreacher = user?.role === 'preacher';
+  const items = NAV_ITEMS
+    .filter((i) => !i.adminOnly || isAdmin)
+    .map((i) =>
+      i.to === '/passes' ? { ...i, label: isPreacher ? 'My Passes' : 'All Passes' } : i
+    );
 
   return (
     <div className={`app-shell ${navOpen ? 'nav-open' : ''}`}>
@@ -81,7 +86,10 @@ export default function Layout() {
               <span className="user-avatar">{initials(user.name)}</span>
               <div className="user-meta">
                 <div className="user-name">{user.name}</div>
-                <div className="user-role">{user.role} · @{user.username}</div>
+                <div className="user-role">
+                  {user.role}
+                  {isPreacher && user.shortCode ? ` · ${user.shortCode}` : ` · @${user.username}`}
+                </div>
               </div>
             </div>
           )}

@@ -9,7 +9,9 @@ const passSchema = new mongoose.Schema(
     donor_name: { type: String, required: true, trim: true },
     phone: { type: String, trim: true, default: '' },
     email: { type: String, trim: true, default: '' },
-    pass_type: { type: String, enum: PASS_TYPES, default: 'General' },
+    // Pass types come from the selected event's categories on the main system
+    // (e.g. Invitee, Sponsor, General Public), so no fixed allow-list.
+    pass_type: { type: String, default: 'General' },
     notes: { type: String, trim: true, default: '' },
     qr_content: { type: String, required: true },
     // Where the QR came from: 'main-system' = claimed from the main Prasadam system,

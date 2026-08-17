@@ -3,8 +3,8 @@ import jwt from 'jsonwebtoken';
 const JWT_SECRET = process.env.JWT_SECRET || 'seva-pass-dev-secret-change-me';
 const TOKEN_TTL = '7d';
 
-export function signToken(user) {
-  return jwt.sign({ id: user.id, username: user.username, role: user.role }, JWT_SECRET, {
+export function signToken(user, extra = {}) {
+  return jwt.sign({ id: user.id, username: user.username, role: user.role, ...extra }, JWT_SECRET, {
     expiresIn: TOKEN_TTL,
   });
 }
@@ -16,6 +16,7 @@ export function publicUser(user) {
     name: user.name,
     role: user.role,
     quota: user.quota || 30,
+    short_code: user.short_code || '',
   };
 }
 

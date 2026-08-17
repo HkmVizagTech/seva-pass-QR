@@ -18,23 +18,62 @@ const CARDS = [
   { key: 'events', label: 'Events', className: 'stat-events', icon: CalendarIcon },
 ];
 
+// Preacher dashboard cards (data comes from the main system).
+const PREACHER_CARDS = [
+  { key: 'totalHolders', label: 'My Devotees', className: 'stat-total', icon: UsersIcon },
+  { key: 'activePasses', label: 'Active Passes', className: 'stat-unused', icon: TicketIcon },
+  { key: 'scannedPasses', label: 'Scanned', className: 'stat-events', icon: QrIcon },
+  { key: 'scanRate', label: 'Scan Rate %', className: 'stat-quota', icon: GiftIcon, suffix: '' },
+];
+
 export default function Dashboard() {
   const [stats, setStats] = useState(null);
   const [error, setError] = useState('');
   const [recent, setRecent] = useState([]);
 
-  useEffect(() => {
+  const load = () => {
+    setError('');
     api
       .stats()
-      .then(({ stats }) => setStats(stats))
+      .then((data) => {
+        if (!data || !data.stats) throw new Error('The server sent an unexpected reply.');
+        setStats(data.stats);
+      })
       .catch((e) => setError(e.message));
     api
-      .passes()
-      .then(({ passes }) => setRecent(passes.slice(0, 8)))
+      .me()
+      .then(({ user }) => {
+        if (user.role === 'preacher') {
+          api
+            .myHolders({ limit: 8 })
+            .then(({ holders }) => setRecent(holders || []))
+            .catch(() => {});
+        } else {
+          api
+            .passes()
+            .then(({ passes }) => setRecent((passes || []).slice(0, 8)))
+            .catch(() => {});
+        }
+      })
       .catch(() => {});
-  }, []);
+  };
+
+  useEffect(load, []);
+
+  // Never spin forever: if the stats call failed, show why and offer a retry.
+  if (!stats && error) {
+    return (
+      <div className="fade-up" style={{ padding: '24px 0' }}>
+        <div className="alert alert-error">{error}</div>
+        <button className="btn btn-primary btn-sm" onClick={load}>Try again</button>
+      </div>
+    );
+  }
 
   if (!stats) return <div className="loading">Loading…</div>;
+
+  const isPreacher = stats.preacher === true;
+  const cards = isPreacher ? PREACHER_CARDS : CARDS;
 
   return (
     <div className="fade-up">
@@ -43,24 +82,28 @@ export default function Dashboard() {
           <span className="title-icon"><DashboardIcon size={22} /></span>
           <div>
             <h1>Dashboard</h1>
-            <p>Overview of your seva passes</p>
+            <p>{isPreacher ? 'Your devotees and passes' : 'Overview of your seva passes'}</p>
           </div>
         </div>
       </header>
       {error && <div className="alert alert-error">{error}</div>}
 
       <div className="stat-grid">
-        {CARDS.map((c) => {
+        {cards.map((c) => {
           const Icon = c.icon;
+          const value = stats[c.key];
           return (
             <div key={c.key} className={`stat-card ${c.className}`}>
               <span className="stat-ico"><Icon size={18} /></span>
-              <div className="stat-value">{stats[c.key] ?? 0}</div>
+              <div className="stat-value">
+                {value ?? 0}
+                {c.suffix !== undefined && c.suffix !== null ? c.suffix : ''}
+              </div>
               <div className="stat-label">{c.label}</div>
             </div>
           );
         })}
-        {stats.quota && (
+        {!isPreacher && stats.quota && (
           <div className="stat-card stat-quota">
             <span className="stat-ico"><UsersIcon size={18} /></span>
             <div className="stat-value">
@@ -71,21 +114,47 @@ export default function Dashboard() {
         )}
       </div>
 
+      {isPreacher && Array.isArray(stats.byEvent) && stats.byEvent.length > 0 && (
+        <section className="panel">
+          <div className="panel-head">
+            <h2>By festival</h2>
+          </div>
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Event</th>
+                  <th className="ta-r">Devotees</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stats.byEvent.map((e) => (
+                  <tr key={e._id || e.eventCode || e.eventName}>
+                    <td>{e.eventName || e.eventCode || '—'}</td>
+                    <td className="ta-r">{e.count}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
       <section className="panel">
         <div className="panel-head">
-          <h2>Recently issued passes</h2>
+          <h2>{isPreacher ? 'Recently issued under you' : 'Recently issued passes'}</h2>
           <Link to="/passes" className="btn btn-ghost btn-sm">View all</Link>
         </div>
         {recent.length === 0 ? (
           <div className="alert alert-info" style={{ margin: 0 }}>
-            No passes issued yet. <Link to="/issue">Issue your first pass</Link>.
+            No passes yet. <Link to="/issue">Issue your first pass</Link>.
           </div>
         ) : (
           <div className="table-wrap">
             <table className="table">
               <thead>
                 <tr>
-                  <th>Donor / Invitee</th>
+                  <th>{isPreacher ? 'Devotee' : 'Donor / Invitee'}</th>
                   <th>Type</th>
                   <th>Event</th>
                   <th>Status</th>
@@ -93,18 +162,32 @@ export default function Dashboard() {
                 </tr>
               </thead>
               <tbody>
-                {recent.map((p) => (
-                  <tr key={p.id}>
-                    <td>
-                      {p.donor_name}
-                      <div className="sub">{p.phone || p.email || ''}</div>
-                    </td>
-                    <td>{p.pass_type}</td>
-                    <td>{p.event_name || '—'}</td>
-                    <td><span className={`badge badge-${p.status}`}>{p.status}</span></td>
-                    <td>{formatDateTime(p.created_at)}</td>
-                  </tr>
-                ))}
+                {recent.map((p) => {
+                  const name = isPreacher ? (p.name || p.donor_name) : p.donor_name;
+                  const type = isPreacher ? p.catId?.name || p.catId?.catCode || '—' : p.pass_type;
+                  const event = isPreacher ? p.eventId?.name || p.eventId?.eventCode || '—' : p.event_name || '—';
+                  const status = isPreacher
+                    ? p.qrPass?.status || 'no pass'
+                    : p.status;
+                  const phone = isPreacher ? p.phone : (p.phone || p.email || '');
+                  return (
+                    <tr key={p.id || p._id}>
+                      <td>
+                        {name}
+                        <div className="sub">{phone}</div>
+                      </td>
+                      <td>{type}</td>
+                      <td>{event}</td>
+                      <td>
+                        <span className={`badge badge-${status}`}>{status}</span>
+                        {isPreacher && p.bahumanaReceived && (
+                          <div className="sub" style={{ color: 'var(--green, #1a7f37)' }}>🎁 bahumana received</div>
+                        )}
+                      </td>
+                      <td>{formatDateTime(p.created_at || p.issuedAt)}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

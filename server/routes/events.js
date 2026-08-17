@@ -6,7 +6,57 @@ const router = Router();
 
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
+// An event is "live or upcoming" if it has no end date yet, or its end date
+// is today or later. Events with no dates at all are kept visible (legacy).
+function isLive(ev) {
+  if (ev.date_end) {
+    const end = new Date(ev.date_end);
+    if (!Number.isNaN(end.getTime())) {
+      return end.getTime() >= new Date(new Date().toDateString()).getTime();
+    }
+  }
+  if (ev.date) {
+    const d = new Date(ev.date + 'T23:59:59');
+    if (!Number.isNaN(d.getTime())) {
+      return d.getTime() >= new Date(new Date().toDateString()).getTime();
+    }
+  }
+  return true;
+}
+
+// Keep the local event list fresh: silently upsert the main system's events
+// (with their real start/end dates) on every fetch, so live/upcoming events
+// appear without requiring a manual "Sync from main system" click. Non-fatal.
+async function autoSyncMainEvents() {
+  if (!isMainSystemConfigured()) return;
+  try {
+    const mainEvents = await fetchEvents();
+    for (const ev of mainEvents) {
+      const eventCode = ev.eventCode || '';
+      if (!eventCode) continue;
+      await Event.findOneAndUpdate(
+        { event_code: eventCode.toUpperCase() },
+        {
+          $set: {
+            name: ev.name || eventCode,
+            event_code: eventCode.toUpperCase(),
+            location: (ev.venue && ev.venue[0] && ev.venue[0].name) || '',
+            date: ev.dateStart ? new Date(ev.dateStart).toISOString().slice(0, 10) : '',
+            date_start: ev.dateStart ? new Date(ev.dateStart).toISOString() : '',
+            date_end: ev.dateEnd ? new Date(ev.dateEnd).toISOString() : '',
+          },
+        },
+        { upsert: true, setDefaultsOnInsert: true, runValidators: true }
+      );
+    }
+  } catch (e) {
+    console.warn('[Events] auto-sync from main system failed:', e.message);
+  }
+}
+
 router.get('/', wrap(async (req, res) => {
+  const { live = '' } = req.query;
+  await autoSyncMainEvents();
   const events = await Event.aggregate([
     {
       $lookup: {
@@ -22,6 +72,8 @@ router.get('/', wrap(async (req, res) => {
         event_code: 1,
         location: 1,
         date: 1,
+        date_start: 1,
+        date_end: 1,
         created_by: 1,
         created_at: 1,
         id: '$_id',
@@ -30,7 +82,20 @@ router.get('/', wrap(async (req, res) => {
     },
     { $sort: { created_at: -1 } },
   ]);
-  res.json({ events });
+
+  // ?live=1 → only live / upcoming events (the app only shows those).
+  const filtered = live === '1' ? events.filter(isLive) : events;
+
+  // Enrich with a status for the client.
+  const now = Date.now();
+  const withStatus = filtered.map((ev) => {
+    let status = 'upcoming';
+    if (ev.date_start && new Date(ev.date_start).getTime() <= now) status = 'active';
+    if (ev.date_end && new Date(ev.date_end).getTime() < now) status = 'completed';
+    return { ...ev, status };
+  });
+
+  res.json({ events: withStatus });
 }));
 
 // Sync events from the main system — pulls all events and upserts locally.
@@ -54,7 +119,16 @@ router.post('/sync', wrap(async (req, res) => {
     const date = ev.dateStart ? new Date(ev.dateStart).toISOString().slice(0, 10) : '';
     const doc = await Event.findOneAndUpdate(
       { event_code: eventCode.toUpperCase() },
-      { $set: { name, event_code: eventCode.toUpperCase(), location, date } },
+      {
+        $set: {
+          name,
+          event_code: eventCode.toUpperCase(),
+          location,
+          date,
+          date_start: ev.dateStart ? new Date(ev.dateStart).toISOString() : '',
+          date_end: ev.dateEnd ? new Date(ev.dateEnd).toISOString() : '',
+        },
+      },
       { upsert: true, new: true, runValidators: true },
     );
     synced.push(doc);

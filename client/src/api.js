@@ -1,24 +1,68 @@
 const TOKEN_KEY = 'seva_token';
 
-// The backend origin for native (Capacitor) builds. When unset the app talks
-// to the same origin that serves it (Vite dev proxy / deployed domain).
-const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
-// The public site URL where pass card pages are served (Vercel).
-const SITE_BASE = (import.meta.env.VITE_SITE_URL || '').replace(/\/+$/, '');
+// ---------------------------------------------------------------------------
+// Backend / site origins
+//
+// The web build talks to the same origin that serves it. The native (Capacitor)
+// build has no backend of its own, so it needs an absolute URL. That normally
+// comes from client/.env.android via `vite build --mode android`, but if the APK
+// is ever built with a plain `vite build` those vars are empty, every request
+// becomes a relative URL, and the Capacitor WebView answers it with index.html —
+// which parses as an empty object and leaves the app spinning on "Loading…".
+// These constants are the safety net for that case.
+// ---------------------------------------------------------------------------
+const PROD_API = 'https://seva-pass-server-production.up.railway.app';
+const PROD_SITE = 'https://seva-pass-qr-server.vercel.app';
+
+const clean = (value) => (value || '').replace(/\/+$/, '');
+
+// True when running inside the Capacitor native shell (the Android app).
+function isNativeApp() {
+  if (typeof window === 'undefined') return false;
+  try {
+    if (window.Capacitor?.isNativePlatform?.()) return true;
+  } catch {}
+  const { protocol, hostname, port } = window.location;
+  if (protocol === 'capacitor:' || protocol === 'ionic:' || protocol === 'file:') return true;
+  // Capacitor Android serves the app from https://localhost with no port.
+  return hostname === 'localhost' && !port && !import.meta.env.DEV;
+}
+
+let apiBaseCache = null;
+function apiBase() {
+  if (apiBaseCache === null) {
+    apiBaseCache = clean(import.meta.env.VITE_API_URL) || (isNativeApp() ? PROD_API : '');
+  }
+  return apiBaseCache;
+}
+
+let siteBaseCache = null;
+function siteBase() {
+  if (siteBaseCache === null) {
+    siteBaseCache = clean(import.meta.env.VITE_SITE_URL) || (isNativeApp() ? PROD_SITE : '');
+  }
+  return siteBaseCache;
+}
 
 export function apiOrigin() {
-  return API_BASE || window.location.origin;
+  return apiBase() || window.location.origin;
 }
 
 export function siteOrigin() {
-  return SITE_BASE || window.location.origin;
+  return siteBase() || window.location.origin;
 }
 
 export function getToken() {
-  return localStorage.getItem(TOKEN_KEY);
+  const token = localStorage.getItem(TOKEN_KEY);
+  // Guard against a bad value written by an earlier broken build.
+  if (!token || token === 'undefined' || token === 'null') return null;
+  return token;
 }
 
 export function setToken(token) {
+  if (!token || typeof token !== 'string') {
+    throw new Error('Login failed: the server did not return a session token.');
+  }
   localStorage.setItem(TOKEN_KEY, token);
 }
 
@@ -40,42 +84,79 @@ async function request(path, options = {}) {
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
   if (options.body) headers['Content-Type'] = 'application/json';
+  headers.Accept = 'application/json';
 
-  const res = await fetch(API_BASE + path, { ...options, headers });
+  const url = apiBase() + path;
+
+  let res;
+  try {
+    res = await fetch(url, { ...options, headers });
+  } catch {
+    throw new Error('Cannot reach the server. Check your internet connection and try again.');
+  }
+
   if (res.status === 401) {
     clearToken();
     throw new Error('Session expired. Please log in again.');
   }
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || 'Request failed');
+
+  const raw = await res.text();
+  let data = {};
+  if (raw.trim()) {
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      // Not JSON — almost always means the request never reached the API
+      // (wrong base URL, offline proxy, or the app shell answering instead).
+      throw new Error(
+        `The server sent an unexpected reply (HTTP ${res.status}). The app may be pointing at the wrong backend.`
+      );
+    }
+  }
+  if (!res.ok) throw new Error(data.error || `Request failed (HTTP ${res.status})`);
   return data;
 }
 
 export const api = {
   login: (username, password) =>
     request('/api/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
+  // Preacher / devotee login against the main ISKCON system.
+  preacherLogin: ({ email, phone, password }) =>
+    request('/api/auth/preacher-login', { method: 'POST', body: JSON.stringify({ email, phone, password }) }),
   me: () => request('/api/auth/me'),
   users: () => request('/api/auth/users'),
   createUser: (body) => request('/api/auth/users', { method: 'POST', body: JSON.stringify(body) }),
   updateUser: (id, body) => request(`/api/auth/users/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
 
   stats: () => request('/api/stats'),
-  events: () => request('/api/events'),
+  events: (params) => request('/api/events' + qs(params)),
   createEvent: (body) => request('/api/events', { method: 'POST', body: JSON.stringify(body) }),
   syncEvents: () => request('/api/events/sync', { method: 'POST' }),
+
+  // Preacher-scoped views (main system, proxied).
+  myHolders: (params) => request('/api/preachers/me/holders' + qs(params)),
+  myStats: () => request('/api/preachers/me/stats'),
+  // Returns a blob object URL for a holder's QR image (main system, proxied).
+  holderQrImage: async (qrId) => {
+    const res = await fetch(`${apiBase()}/api/preachers/qr/${encodeURIComponent(qrId)}/image`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+    if (!res.ok) throw new Error('Failed to load QR image');
+    return URL.createObjectURL(await res.blob());
+  },
 
   passes: (params) => request('/api/passes' + qs(params)),
   createPass: (body) => request('/api/passes', { method: 'POST', body: JSON.stringify(body) }),
   getPass: (id) => request(`/api/passes/${id}`),
   revoke: (id) => request(`/api/passes/${id}/revoke`, { method: 'POST' }),
-  entryPoints: (eventCode) => request('/api/passes/entry-points' + qs({ event_code: eventCode })),
   venues: (eventCode) => request('/api/passes/venues' + qs({ event_code: eventCode })),
+  categories: (eventCode) => request('/api/passes/categories' + qs({ event_code: eventCode })),
 
   publicPass: (token) => request(`/api/public/passes/${token}`),
 };
 
 export async function downloadQrPng(id, filename) {
-  const res = await fetch(`${API_BASE}/api/passes/${id}/qr.png`, {
+  const res = await fetch(`${apiBase()}/api/passes/${id}/qr.png`, {
     headers: { Authorization: `Bearer ${getToken()}` },
   });
   if (!res.ok) throw new Error('Download failed');
@@ -111,23 +192,24 @@ export async function shareWhatsApp(id, phone, donorName, passToken, mainQrImage
     } catch {}
   }
 
-    // Custom WhatsApp plugin: writes image to cache, opens WhatsApp directly with contact + image
-    if (base64) {
-      try {
-        const { registerPlugin } = await import('@capacitor/core');
-        const WhatsAppShare = registerPlugin('WhatsAppShare');
-        await WhatsAppShare.share({
-          data: base64,
-          phone: international,
-          text,
-          filename: `${donorName.replace(/\s+/g, '-')}-pass.png`,
-        });
-        return;
-      } catch (e) {
-        console.warn('WhatsAppShare plugin failed:', e);
-      }
+  if (base64) {
+    // Custom WhatsApp plugin: writes the image to cache, then opens WhatsApp
+    // directly with the contact + image attached.
+    try {
+      const { registerPlugin } = await import('@capacitor/core');
+      const WhatsAppShare = registerPlugin('WhatsAppShare');
+      await WhatsAppShare.share({
+        data: base64,
+        phone: international,
+        text,
+        filename: `${donorName.replace(/\s+/g, '-')}-pass.png`,
+      });
+      return;
+    } catch (e) {
+      console.warn('WhatsAppShare plugin failed:', e);
+    }
 
-    // Capacitor Share fallback (opens share picker)
+    // Capacitor Share fallback (opens the share picker)
     try {
       const { Filesystem, Directory } = await import('@capacitor/filesystem');
       const { Share } = await import('@capacitor/share');

@@ -2,12 +2,23 @@ import { Router } from 'express';
 import Pass from '../models/Pass.js';
 import Event from '../models/Event.js';
 import User from '../models/User.js';
+import { preacherGetStats } from '../services/mainSystem.js';
 
 const router = Router();
 
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
 router.get('/', wrap(async (req, res) => {
+  // Preacher (main-system devotee) dashboard — their own stats come straight
+  // from the main system (holders, active passes, scan rate, per event).
+  if (req.user.role === 'preacher') {
+    if (!req.user.main_token) {
+      return res.status(401).json({ error: 'Preacher session missing — please log in again' });
+    }
+    const data = await preacherGetStats(req.user.main_token);
+    return res.json({ stats: { preacher: true, ...data } });
+  }
+
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
 
