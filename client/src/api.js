@@ -113,10 +113,11 @@ export async function shareWhatsApp(id, phone, donorName, passToken, qrSvgDataUr
   if (base64) {
     try {
       const { Share } = await import('@capacitor/share');
+      // Android plugin expects files as array of data-URI strings, not objects
       await Share.share({
         title: `${donorName} — Seva Pass`,
         text,
-        files: [{ data: base64, type: 'image/png', filename: `${donorName.replace(/\s+/g, '-')}-pass.png` }],
+        files: [`data:image/png;base64,${base64}`],
       });
       debug.push('SHARE OK');
       return;
