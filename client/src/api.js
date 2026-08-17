@@ -90,20 +90,26 @@ export async function downloadQrPng(id, filename) {
   URL.revokeObjectURL(url);
 }
 
-export async function shareWhatsApp(id, phone, donorName, passToken, qrSvgDataUrl) {
+export async function shareWhatsApp(id, phone, donorName, passToken, mainQrImage) {
   if (!phone) return;
   const digits = phone.replace(/\D/g, '');
   const international = digits.length === 10 ? '91' + digits : digits;
   const passUrl = `${siteOrigin()}/pass?t=${passToken}`;
   const text = `Hare Krishna ${donorName}! Here is your seva pass:\n\n${passUrl}`;
 
-  // Generate QR PNG using qrcode library
+  // Use the actual gate-scannable QR from the main system if available.
+  // For local passes, generate a QR of the pass card URL instead.
   let base64 = '';
-  try {
-    const QRCode = await import('qrcode');
-    const dataUrl = await QRCode.toDataURL(passUrl, { width: 600, margin: 1 });
-    base64 = dataUrl.split(',')[1] || '';
-  } catch {}
+  if (mainQrImage) {
+    // mainQrImage may be a data URL or raw base64
+    base64 = mainQrImage.includes(',') ? mainQrImage.split(',')[1] : mainQrImage;
+  } else {
+    try {
+      const QRCode = await import('qrcode');
+      const dataUrl = await QRCode.toDataURL(passUrl, { width: 600, margin: 1 });
+      base64 = dataUrl.split(',')[1] || '';
+    } catch {}
+  }
 
     // Custom WhatsApp plugin: writes image to cache, opens WhatsApp directly with contact + image
     if (base64) {

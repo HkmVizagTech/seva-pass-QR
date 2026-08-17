@@ -43,12 +43,13 @@ function serializePass(doc) {
   };
 }
 
-// qr_image (the main system's own PNG) is only included when explicitly asked —
-// it is a large base64 blob and would bloat list responses.
+// qr_image (the main system's own PNG) is included so WhatsApp sharing
+// can send the actual gate-scannable QR, not just a pass URL link.
 async function serializePassWithQr(doc, { includeImage = false } = {}) {
   const base = serializePass(doc);
   const extra = {};
-  if (includeImage && doc.main_qr_image) extra.qr_image = doc.main_qr_image;
+  // Always include qr_image when available — needed for WhatsApp sharing
+  if (doc.main_qr_image) extra.qr_image = doc.main_qr_image;
   return { ...base, ...extra, qr_svg: await qrSvg(doc.qr_content) };
 }
 

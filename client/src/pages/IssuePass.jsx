@@ -215,7 +215,7 @@ export default function IssuePass() {
                 {created.phone && (
                   <button
                     className="btn btn-ghost btn-sm"
-                    onClick={() => shareWhatsApp(created.id, created.phone, created.donor_name, created.token, created.qr_svg)}
+                    onClick={() => shareWhatsApp(created.id, created.phone, created.donor_name, created.token, created.qr_image)}
                   >
                     <WhatsAppIcon size={15} /> WhatsApp
                   </button>
