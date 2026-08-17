@@ -1,10 +1,19 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, apiOrigin, downloadQrPng } from '../api.js';
-import { QrIcon, DownloadIcon, ExternalIcon, CheckIcon } from '../components/icons.jsx';
+import { QrIcon, DownloadIcon, ExternalIcon, CheckIcon, WhatsAppIcon } from '../components/icons.jsx';
 
 const PASS_TYPES = ['General', 'VIP', 'Donor', 'Volunteer', 'Staff', 'Media'];
 const EMPTY = { donor_name: '', phone: '', email: '', pass_type: 'General', event_id: '' };
+
+function whatsappUrl(phone, passToken, donorName) {
+  if (!phone) return '';
+  const digits = phone.replace(/\D/g, '');
+  const international = digits.length === 10 ? '91' + digits : digits;
+  const passUrl = `${window.location.origin}/pass?t=${passToken}`;
+  const text = `Hare Krishna ${donorName}! Here is your seva pass:\n\n${passUrl}`;
+  return `https://wa.me/${international}?text=${encodeURIComponent(text)}`;
+}
 
 export default function IssuePass() {
   const [form, setForm] = useState(EMPTY);
@@ -13,6 +22,8 @@ export default function IssuePass() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [quota, setQuota] = useState(null);
+  const [venues, setVenues] = useState([]);
+  const [selectedVenue, setSelectedVenue] = useState('');
 
   useEffect(() => {
     api
@@ -24,6 +35,31 @@ export default function IssuePass() {
       .then(({ events }) => setEvents(events))
       .catch(() => {});
   }, []);
+
+  // Fetch venues when an event with an event_code is selected
+  useEffect(() => {
+    if (!form.event_id) {
+      setVenues([]);
+      setSelectedVenue('');
+      return;
+    }
+    const ev = events.find((e) => e.id === form.event_id);
+    if (!ev?.event_code) {
+      setVenues([]);
+      setSelectedVenue('');
+      return;
+    }
+    api
+      .venues(ev.event_code)
+      .then(({ venues }) => {
+        setVenues(venues || []);
+        setSelectedVenue('');
+      })
+      .catch(() => {
+        setVenues([]);
+        setSelectedVenue('');
+      });
+  }, [form.event_id, events]);
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
 
@@ -38,10 +74,12 @@ export default function IssuePass() {
         email: form.email,
         pass_type: form.pass_type,
         event_id: form.event_id || null,
+        venue: selectedVenue || '',
         baseUrl: apiOrigin(),
       });
       setCreated(pass);
       setForm(EMPTY);
+      setSelectedVenue('');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -125,6 +163,29 @@ export default function IssuePass() {
               </select>
             </label>
 
+            {venues.length > 0 && (
+              <div className="ep-select">
+                <label style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: 6, display: 'block' }}>
+                  Venue (optional)
+                </label>
+                <p className="sub" style={{ margin: '0 0 8px' }}>Select which venue this pass is for</p>
+                <div className="ep-grid">
+                  {venues.map((v) => (
+                    <label key={v.name} className={`ep-chip ${selectedVenue === v.name ? 'ep-active' : ''}`}>
+                      <input
+                        type="radio"
+                        name="venue"
+                        checked={selectedVenue === v.name}
+                        onChange={() => setSelectedVenue(selectedVenue === v.name ? '' : v.name)}
+                      />
+                      <span className="ep-name">{v.name}</span>
+                      {v.address && <span className="ep-type">{v.address}</span>}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <button className="btn btn-primary btn-block" disabled={loading}>
               {loading ? 'Getting QR pass…' : 'Get QR pass'}
             </button>
@@ -155,6 +216,16 @@ export default function IssuePass() {
                 <Link className="btn btn-ghost btn-sm" to={`/pass?t=${created.token}`}>
                   <ExternalIcon size={15} /> Open card
                 </Link>
+                {created.phone && (
+                  <a
+                    className="btn btn-ghost btn-sm"
+                    href={whatsappUrl(created.phone, created.token, created.donor_name)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <WhatsAppIcon size={15} /> WhatsApp
+                  </a>
+                )}
               </div>
               <div className="sub" style={{ marginTop: 10 }}>
                 <CheckIcon size={13} /> Pass issued successfully

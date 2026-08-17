@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { api, parseDate } from '../api.js';
 import { PrintIcon, CheckIcon, ShieldIcon } from '../components/icons.jsx';
 
@@ -13,6 +13,7 @@ export default function PublicPass() {
   const token = params.get('t') || '';
   const [pass, setPass] = useState(null);
   const [error, setError] = useState('');
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (!token) {
@@ -29,6 +30,15 @@ export default function PublicPass() {
 
   return (
     <div className="public-page">
+      <div className="public-topbar">
+        <button className="btn btn-ghost btn-sm" onClick={() => navigate(-1)} style={{ color: '#fff' }}>
+          ← Back
+        </button>
+        <button className="btn btn-ghost btn-sm" onClick={() => navigate('/')} style={{ color: '#fff' }}>
+          🏠 Home
+        </button>
+      </div>
+
       {error && (
         <div className="public-card error-card fade-up">
           <div className="public-status">🙏</div>

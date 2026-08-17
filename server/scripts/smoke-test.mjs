@@ -4,7 +4,6 @@ import net from 'node:net';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import jwt from 'jsonwebtoken';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BASE = 'http://localhost:4000';
@@ -58,6 +57,7 @@ async function assertPortFree(port) {
 
 // ─── Stub of the real main system (HkmVizagTech/iskcon-seva-pass-backend) ───
 // POST /api/integration/generate-volunteer-qr — same contract, deterministic QR id.
+// GET  /api/integration/events/:eventCode/entry-points — returns stub entry points.
 function startMainStub() {
   return new Promise((resolve) => {
     const server = http.createServer((req, res) => {
@@ -68,11 +68,31 @@ function startMainStub() {
           res.writeHead(status, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify(obj));
         };
-        if (req.url !== '/api/integration/generate-volunteer-qr' || req.method !== 'POST') {
-          return send(404, { status: false, message: 'Not found' });
-        }
         if (req.headers['x-api-key'] !== 'test-integration-key') {
           return send(401, { status: false, message: 'Invalid API key' });
+        }
+
+        // GET /api/integration/events/:eventCode/venues
+        const venueMatch = req.url.match(/^\/api\/integration\/events\/([^/]+)\/venues$/);
+        if (venueMatch && req.method === 'GET') {
+          return send(200, [
+            { index: 0, name: 'ISKCON Main Temple', address: '123 Temple Road', coordinates: null },
+            { index: 1, name: 'ISKCON Branch', address: '456 Branch Road', coordinates: null },
+          ]);
+        }
+
+        // GET /api/integration/events/:eventCode/entry-points
+        const epMatch = req.url.match(/^\/api\/integration\/events\/([^/]+)\/entry-points$/);
+        if (epMatch && req.method === 'GET') {
+          return send(200, [
+            { _id: 'ep001', name: 'Main Gate', stationLabel: 'GATE-1', type: 'venue_entry' },
+            { _id: 'ep002', name: 'Darshan Hall', stationLabel: 'DARSH-1', type: 'darshan' },
+            { _id: 'ep003', name: 'Prasadam Area', stationLabel: 'PRAS-1', type: 'prasadam' },
+          ]);
+        }
+
+        if (req.url !== '/api/integration/generate-volunteer-qr' || req.method !== 'POST') {
+          return send(404, { status: false, message: 'Not found' });
         }
         let parsed;
         try {
@@ -83,8 +103,10 @@ function startMainStub() {
         if (!parsed.event_id || !parsed.user_phone_number) {
           return send(400, { status: false, message: 'event_id and user_phone_number are required' });
         }
+        // If venue was sent, echo it in the qr_id so we can verify forwarding
+        const venueLabel = parsed.venue ? `-V:${parsed.venue.replace(/\s+/g, '')}` : '';
         const digits = String(parsed.user_phone_number).replace(/\D/g, '');
-        const qrId = `ISK-EVT26-GN-${digits.slice(-4)}01`;
+        const qrId = `ISK-${parsed.event_id}-GN-${digits.slice(-4)}01${venueLabel}`;
         send(200, {
           status: true,
           message: 'QR code generated successfully',
@@ -157,18 +179,11 @@ try {
   const pub = await req('GET', `/api/public/passes/${token2}`);
   assert(pub.status === 200 && pub.data.pass.donor_name === 'Krishna Das' && pub.data.pass.qr_svg, 'public pass card');
 
-  const chk = await req('POST', `/api/passes/${token2}/check-in`, { token });
-  assert(chk.status === 200 && chk.data.pass.status === 'used' && !chk.data.already, 'check-in flips to used');
-  const chk2 = await req('POST', `/api/passes/${token2}/check-in`, { token });
-  assert(chk2.status === 200 && chk2.data.already === true, 'double scan reports already checked in');
-
   const stats = await req('GET', '/api/stats', { token });
-  assert(stats.data.stats.total === 1 && stats.data.stats.used === 1 && stats.data.stats.checked_today === 1, 'stats correct');
+  assert(stats.data.stats.total === 1 && stats.data.stats.used === 0 && stats.data.stats.checked_today === 0, 'stats correct');
 
   const rev = await req('POST', `/api/passes/${passId}/revoke`, { token });
   assert(rev.data.pass.status === 'revoked', 'pass revoked');
-  const chkRevoked = await req('POST', `/api/passes/${token2}/check-in`, { token });
-  assert(chkRevoked.status === 409, 'revoked pass rejected at gate');
 
   const wa = await req('POST', `/api/passes/${passId}/send-whatsapp`, { token });
   assert(wa.status === 501, 'WhatsApp endpoint returns not-configured until env is set');
@@ -263,6 +278,52 @@ try {
   const login2 = await req('POST', '/api/auth/login', { body: { username: 'admin', password: 'admin123' } });
   const token2b = login2.data.token;
 
+  // Create an event with an event_code — the integration should use this code
+  const evWithCode = await req('POST', '/api/events', {
+    token: token2b,
+    body: { name: 'Ratha Yatra 2026', event_code: 'RATH26', location: 'Vizag', date: '2026-07-10' },
+  });
+  assert(evWithCode.status === 201 && evWithCode.data.event.event_code === 'RATH26', 'event created with event_code');
+
+  // Issue a pass against that event — should use RATH26, not the env fallback EVT26
+  const multiPass = await req('POST', '/api/passes', {
+    token: token2b,
+    body: { donor_name: 'Balaram Das', phone: '+91 9000012345', event_id: evWithCode.data.event._id },
+  });
+  assert(multiPass.status === 201, 'pass created for event with code');
+  assert(multiPass.data.pass.source === 'main-system', 'pass claimed from main system');
+  assert(multiPass.data.pass.main_qr_id.includes('RATH26'), 'main system used event_code RATH26, not env fallback EVT26');
+
+  // Issue without selecting an event — should fall back to env var EVT26
+  const fallbackPass = await req('POST', '/api/passes', {
+    token: token2b,
+    body: { donor_name: 'Sudama Das', phone: '+91 9000012346' },
+  });
+  assert(fallbackPass.status === 201, 'pass created without event (fallback)');
+  assert(fallbackPass.data.pass.main_qr_id.includes('EVT26'), 'fallback uses env MAIN_SYSTEM_EVENT_ID');
+
+  // ── Venue fetching ──────────────────────────────────────────────────────
+  const venueList = await req('GET', '/api/passes/venues?event_code=RATH26', { token: token2b });
+  assert(venueList.status === 200, 'venues endpoint returns 200');
+  assert(venueList.data.venues.length === 2, 'stub returns 2 venues');
+  assert(venueList.data.venues[0].name === 'ISKCON Main Temple', 'venue has correct name');
+
+  const venueListNoCode = await req('GET', '/api/passes/venues', { token: token2b });
+  assert(venueListNoCode.status === 200 && venueListNoCode.data.venues.length === 0, 'no event_code returns empty');
+
+  // Issue a pass with a venue — verify it is forwarded to the main system
+  const venuePass = await req('POST', '/api/passes', {
+    token: token2b,
+    body: {
+      donor_name: 'Visvakarma Das',
+      phone: '+91 9000012399',
+      event_id: evWithCode.data.event._id,
+      venue: 'ISKCON Main Temple',
+    },
+  });
+  assert(venuePass.status === 201, 'pass with venue created');
+  assert(venuePass.data.pass.main_qr_id.includes('V:ISKCONMainTemple'), 'venue forwarded to main system');
+
   // Issue without a phone → rejected (phone is how the main system finds the holder)
   const noPhone = await req('POST', '/api/passes', { token: token2b, body: { donor_name: 'No Phone' } });
   assert(noPhone.status === 400, 'integrated mode requires a phone number to claim a QR');
@@ -275,20 +336,6 @@ try {
   assert(msPass.data.pass.main_qr_id === 'ISK-EVT26-GN-678001', 'main system QR id stored');
   assert(msPass.data.pass.qr_image && msPass.data.pass.qr_image.startsWith('data:image/png;base64,'), 'main system QR image returned');
   assert(msPass.data.pass.qr_content === 'ISK-EVT26-GN-678001', 'fallback QR content is the QR id');
-
-  // Check-in by scanning the bare QR id
-  const chkBare = await req('POST', `/api/passes/ISK-EVT26-GN-678001/check-in`, { token: token2b });
-  assert(chkBare.status === 200 && chkBare.data.pass.status === 'used', 'check-in matches bare QR id');
-
-  // Check-in by scanning a signed JWT (payload.q holds the QR id)
-  const msPass2 = await req('POST', '/api/passes', {
-    token: token2b,
-    body: { donor_name: 'Sita Devi', phone: '+91 9988123400' },
-  });
-  const qrId2 = msPass2.data.pass.main_qr_id;
-  const fakeJwt = jwt.sign({ q: qrId2, e: 'abc123', h: 'def456', n: 'Sita Devi' }, 'not-the-real-secret');
-  const chkJwt = await req('POST', `/api/passes/${fakeJwt}/check-in`, { token: token2b });
-  assert(chkJwt.status === 200 && chkJwt.data.pass.donor_name === 'Sita Devi' && chkJwt.data.pass.status === 'used', 'check-in decodes JWT payload q to match');
 
   // Revoking a main-system pass works and frees quota as usual
   const msRevoke = await req('POST', `/api/passes/${msPass.data.pass.id}/revoke`, { token: token2b });

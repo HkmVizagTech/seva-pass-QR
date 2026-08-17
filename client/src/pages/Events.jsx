@@ -1,13 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api.js';
-import { CalendarIcon, PlusIcon, LocationIcon } from '../components/icons.jsx';
+import { CalendarIcon, PlusIcon, LocationIcon, RefreshIcon } from '../components/icons.jsx';
 
 export default function Events() {
   const [events, setEvents] = useState([]);
-  const [form, setForm] = useState({ name: '', location: '', date: '' });
+  const [form, setForm] = useState({ name: '', event_code: '', location: '', date: '' });
   const [error, setError] = useState('');
   const [created, setCreated] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState('');
 
   useEffect(() => {
     api
@@ -28,9 +30,26 @@ export default function Events() {
       const { event } = await api.createEvent(form);
       setCreated(event);
       setEvents((evs) => [event, ...evs]);
-      setForm({ name: '', location: '', date: '' });
+      setForm({ name: '', event_code: '', location: '', date: '' });
     } catch (err) {
       setError(err.message);
+    }
+  };
+
+  const sync = async () => {
+    setSyncing(true);
+    setSyncResult('');
+    setError('');
+    try {
+      const { synced, events: syncedEvents } = await api.syncEvents();
+      setSyncResult(`Synced ${synced} event(s) from main system`);
+      if (syncedEvents.length > 0) {
+        setEvents(syncedEvents);
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -44,12 +63,20 @@ export default function Events() {
             <p>Manage the events you issue passes for</p>
           </div>
         </div>
+        {isAdmin && (
+          <button className="btn btn-ghost btn-sm" onClick={sync} disabled={syncing}>
+            <RefreshIcon size={15} /> {syncing ? 'Syncing…' : 'Sync from main system'}
+          </button>
+        )}
       </header>
 
       {created && (
         <div className="alert alert-success">
-          Event “{created.name}” created. You can now issue passes for it.
+          Event "{created.name}" created. You can now issue passes for it.
         </div>
+      )}
+      {syncResult && (
+        <div className="alert alert-success">{syncResult}</div>
       )}
 
       <div className="two-col">
@@ -61,6 +88,10 @@ export default function Events() {
               <label>
                 Event name *
                 <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required placeholder="e.g. Janmashtami 2026" />
+              </label>
+              <label>
+                Event code (for main system integration)
+                <input value={form.event_code} onChange={(e) => setForm({ ...form, event_code: e.target.value })} placeholder="e.g. EVT26" />
               </label>
               <label>
                 Location
@@ -94,6 +125,7 @@ export default function Events() {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div className="event-name">{ev.name}</div>
                     <div className="sub">
+                      {ev.event_code && <span className="badge" style={{ marginRight: 4 }}>{ev.event_code}</span>}
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
                         <LocationIcon size={11} />
                         {ev.location || 'No location'}

@@ -3,8 +3,6 @@ import { Link } from 'react-router-dom';
 import { api, formatDateTime } from '../api.js';
 import {
   TicketIcon,
-  CheckIcon,
-  ClockIcon,
   CalendarIcon,
   UsersIcon,
   RefreshIcon,
@@ -16,9 +14,7 @@ import {
 const CARDS = [
   { key: 'total', label: 'Total Passes', className: 'stat-total', icon: TicketIcon },
   { key: 'unused', label: 'Unused', className: 'stat-unused', icon: GiftIcon },
-  { key: 'used', label: 'Checked In', className: 'stat-used', icon: CheckIcon },
   { key: 'revoked', label: 'Revoked', className: 'stat-revoked', icon: RefreshIcon },
-  { key: 'checked_today', label: 'Checked In Today', className: 'stat-today', icon: ClockIcon },
   { key: 'events', label: 'Events', className: 'stat-events', icon: CalendarIcon },
 ];
 

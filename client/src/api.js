@@ -56,12 +56,14 @@ export const api = {
   stats: () => request('/api/stats'),
   events: () => request('/api/events'),
   createEvent: (body) => request('/api/events', { method: 'POST', body: JSON.stringify(body) }),
+  syncEvents: () => request('/api/events/sync', { method: 'POST' }),
 
   passes: (params) => request('/api/passes' + qs(params)),
   createPass: (body) => request('/api/passes', { method: 'POST', body: JSON.stringify(body) }),
   getPass: (id) => request(`/api/passes/${id}`),
-  checkIn: (token) => request(`/api/passes/${token}/check-in`, { method: 'POST' }),
   revoke: (id) => request(`/api/passes/${id}/revoke`, { method: 'POST' }),
+  entryPoints: (eventCode) => request('/api/passes/entry-points' + qs({ event_code: eventCode })),
+  venues: (eventCode) => request('/api/passes/venues' + qs({ event_code: eventCode })),
 
   publicPass: (token) => request(`/api/public/passes/${token}`),
 };

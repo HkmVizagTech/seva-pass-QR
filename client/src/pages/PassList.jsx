@@ -4,12 +4,21 @@ import { api, downloadQrPng, parseDate } from '../api.js';
 import {
   ListIcon,
   DownloadIcon,
-  CheckIcon,
   EyeIcon,
   TicketIcon,
+  WhatsAppIcon,
 } from '../components/icons.jsx';
 
 const STATUS = ['', 'unused', 'used', 'revoked'];
+
+function whatsappUrl(phone, passToken, donorName) {
+  if (!phone) return '';
+  const digits = phone.replace(/\D/g, '');
+  const international = digits.length === 10 ? '91' + digits : digits;
+  const passUrl = `${window.location.origin}/pass?t=${passToken}`;
+  const text = `Hare Krishna ${donorName}! Here is your seva pass:\n\n${passUrl}`;
+  return `https://wa.me/${international}?text=${encodeURIComponent(text)}`;
+}
 
 export default function PassList() {
   const [passes, setPasses] = useState([]);
@@ -36,18 +45,6 @@ export default function PassList() {
   };
 
   useEffect(load, [q, status, eventId]);
-
-  const checkIn = async (token) => {
-    setBusyId(token);
-    try {
-      await api.checkIn(token);
-      load();
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setBusyId(null);
-    }
-  };
 
   const revoke = async (id) => {
     if (!window.confirm('Revoke this pass? It can no longer be used.')) return;
@@ -111,7 +108,6 @@ export default function PassList() {
                   <th>Type</th>
                   <th>Event</th>
                   <th>Status</th>
-                  <th>Checked in</th>
                   <th>Issued by</th>
                   <th className="ta-r">Actions</th>
                 </tr>
@@ -129,7 +125,6 @@ export default function PassList() {
                     <td>{p.pass_type}</td>
                     <td>{p.event_name || '—'}</td>
                     <td><span className={`badge badge-${p.status}`}>{p.status}</span></td>
-                    <td>{p.checked_in_at ? parseDate(p.checked_in_at).toLocaleString() : '—'}</td>
                     <td>{p.issuer_name || '—'}</td>
                     <td className="ta-r">
                       <div className="actions">
@@ -142,11 +137,6 @@ export default function PassList() {
                         >
                           <DownloadIcon size={14} /> PNG
                         </button>
-                        {p.status === 'unused' && (
-                          <button className="btn btn-sm" disabled={busyId === p.token} onClick={() => checkIn(p.token)}>
-                            <CheckIcon size={14} /> Check in
-                          </button>
-                        )}
                         {p.status !== 'revoked' && (
                           <button
                             className="btn btn-danger btn-sm"
@@ -155,6 +145,16 @@ export default function PassList() {
                           >
                             Revoke
                           </button>
+                        )}
+                        {p.phone && (
+                          <a
+                            className="btn btn-ghost btn-sm"
+                            href={whatsappUrl(p.phone, p.token, p.donor_name)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            <WhatsAppIcon size={14} />
+                          </a>
                         )}
                       </div>
                     </td>
@@ -182,7 +182,6 @@ export default function PassList() {
                 <div className="pass-item-meta">
                   <div><b>Type</b>{p.pass_type}</div>
                   <div><b>Event</b>{p.event_name || '—'}</div>
-                  <div><b>Checked in</b>{p.checked_in_at ? parseDate(p.checked_in_at).toLocaleString() : '—'}</div>
                   <div><b>Issued by</b>{p.issuer_name || '—'}</div>
                 </div>
 
@@ -193,15 +192,20 @@ export default function PassList() {
                   <button className="btn btn-ghost btn-sm" onClick={() => downloadQrPng(p.id, pngName(p))}>
                     <DownloadIcon size={14} /> PNG
                   </button>
-                  {p.status === 'unused' && (
-                    <button className="btn btn-sm" disabled={busyId === p.token} onClick={() => checkIn(p.token)}>
-                      <CheckIcon size={14} /> Check in
-                    </button>
-                  )}
                   {p.status !== 'revoked' && (
                     <button className="btn btn-danger btn-sm" disabled={busyId === p.id} onClick={() => revoke(p.id)}>
                       Revoke
                     </button>
+                  )}
+                  {p.phone && (
+                    <a
+                      className="btn btn-ghost btn-sm"
+                      href={whatsappUrl(p.phone, p.token, p.donor_name)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <WhatsAppIcon size={14} /> WA
+                    </a>
                   )}
                 </div>
               </div>
