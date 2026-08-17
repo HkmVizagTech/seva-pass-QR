@@ -96,56 +96,42 @@ export async function shareWhatsApp(id, phone, donorName, passToken, qrSvgDataUr
   const international = digits.length === 10 ? '91' + digits : digits;
   const passUrl = `${siteOrigin()}/pass?t=${passToken}`;
   const text = `Hare Krishna ${donorName}! Here is your seva pass:\n\n${passUrl}`;
-  const debug = [];
 
-  // Step 1: Generate QR PNG using qrcode library
+  // Generate QR PNG using qrcode library
   let base64 = '';
   try {
     const QRCode = await import('qrcode');
     const dataUrl = await QRCode.toDataURL(passUrl, { width: 600, margin: 1 });
     base64 = dataUrl.split(',')[1] || '';
-    debug.push(`QR OK: ${base64.length} chars`);
-  } catch (e) {
-    debug.push(`QR FAIL: ${e.message}`);
-  }
+  } catch {}
 
-  // Step 2: Capacitor Share with image
+  // Capacitor Share with image
   if (base64) {
     try {
       const { Share } = await import('@capacitor/share');
-      // Android plugin expects files as array of data-URI strings, not objects
       await Share.share({
         title: `${donorName} — Seva Pass`,
         text,
         files: [`data:image/png;base64,${base64}`],
       });
-      debug.push('SHARE OK');
       return;
-    } catch (e) {
-      debug.push(`SHARE FAIL: ${e.message || e}`);
-    }
-  }
+    } catch {}
 
-  // Step 3: navigator.share fallback
-  if (base64 && navigator.share) {
+    // Web Share API fallback
     try {
-      const binary = atob(base64);
-      const arr = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i++) arr[i] = binary.charCodeAt(i);
-      const blob = new Blob([arr], { type: 'image/png' });
-      const file = new File([blob], `${donorName.replace(/\s+/g, '-')}-pass.png`, { type: 'image/png' });
-      await navigator.share({ text, files: [file] });
-      debug.push('NAVSHARE OK');
-      return;
-    } catch (e) {
-      debug.push(`NAVSHARE FAIL: ${e.message || e}`);
-    }
+      if (navigator.share) {
+        const binary = atob(base64);
+        const arr = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) arr[i] = binary.charCodeAt(i);
+        const blob = new Blob([arr], { type: 'image/png' });
+        const file = new File([blob], `${donorName.replace(/\s+/g, '-')}-pass.png`, { type: 'image/png' });
+        await navigator.share({ text, files: [file] });
+        return;
+      }
+    } catch {}
   }
 
-  // Show debug info so user can report what happened
-  alert('Share debug:\n' + debug.join('\n'));
-
-  // Fallback: WhatsApp text
+  // Fallback: WhatsApp text only
   window.open(`https://wa.me/${international}?text=${encodeURIComponent(text)}`, '_blank');
 }
 
