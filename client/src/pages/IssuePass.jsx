@@ -162,7 +162,7 @@ export default function IssuePass() {
   }
 
   // Multiple live events — the devotee picks the event before any form shows.
-  if (multiple && !form.event_id) {
+  if (multiple && !form.event_id && !created) {
     return (
       <div className="fade-up">
         <header className="page-header">
