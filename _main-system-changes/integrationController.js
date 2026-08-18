@@ -155,7 +155,7 @@ exports.getEventEntryPoints = async (req, res) => {
  */
 exports.generateVolunteerQR = async (req, res) => {
   try {
-    const { event_id, user_phone_number, user_email, venue } = req.body;
+    const { event_id, user_phone_number, user_email, venue, category: categoryParam, name: holderName, preacher, preacherId } = req.body;
 
     if (!event_id) {
       return res.status(400).json({ status: false, message: "event_id is required" });
@@ -179,11 +179,11 @@ exports.generateVolunteerQR = async (req, res) => {
     if (existingHolder) {
       const existingPass = await QRPass.findOne({ holderId: existingHolder._id, status: "active" });
       if (existingPass) {
-        // Already issued — regenerate QR image and return it
-        const entryPoints = await resolveEntryPoints(event, null, venue);
+        const existingCategory = await Category.findById(existingPass.catId).populate("entryPoints").lean();
+        const entryPoints = await resolveEntryPoints(event, existingCategory || null, venue);
         const payload = qrService.createPayload(
           { ...existingHolder.toObject(), qrId: existingPass.qrId },
-          event, null, entryPoints,
+          event, existingCategory, entryPoints,
         );
         const { image: qrImage } = await qrService.generateQRCode(payload);
         await trySendWhatsApp(phone, qrImage, existingHolder, event, entryPoints);
@@ -196,11 +196,27 @@ exports.generateVolunteerQR = async (req, res) => {
       }
     }
 
-    // ── Find the default "General Public" category ──────────────────────────
-    const category = await Category.findOne({
-      eventId: event._id,
-      $or: [{ catCode: "GN" }, { name: /general/i }, { name: /volunteer/i }],
-    }).populate("entryPoints");
+    // ── Resolve category: prefer the one sent by the third-party app ────────
+    // The Seva Pass app sends a category name (e.g. "VIP", "General Public").
+    // We try to match it by name or catCode first. If not found, fall back to
+    // the default GN/Volunteer category.
+    let category = null;
+    if (categoryParam && categoryParam.trim()) {
+      const term = categoryParam.trim();
+      category = await Category.findOne({
+        eventId: event._id,
+        $or: [
+          { name: new RegExp("^" + term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$", "i") },
+          { catCode: term.toUpperCase() },
+        ],
+      }).populate("entryPoints");
+    }
+    if (!category) {
+      category = await Category.findOne({
+        eventId: event._id,
+        $or: [{ catCode: "GN" }, { name: /general/i }, { name: /volunteer/i }],
+      }).populate("entryPoints");
+    }
 
     if (!category) {
       return res.status(400).json({
@@ -229,12 +245,19 @@ exports.generateVolunteerQR = async (req, res) => {
       console.warn("[Integration] holder type lookup failed:", e.message);
     }
 
+    // Use the name from the third-party app if provided, otherwise fall back
+    const resolvedName = (holderName && holderName.trim())
+      ? holderName.trim()
+      : (user_email ? user_email.split("@")[0] : `Devotee ${phone.slice(-4)}`);
+
     const holderData = {
       eventId: event._id, catId: category._id, phone,
       email: user_email || undefined,
-      name: user_email ? user_email.split("@")[0] : `Devotee ${phone.slice(-4)}`,
+      name: resolvedName,
       holderType: holderTypeLabel, holderTypeId,
-      source: "third_party", issuedBy: null,
+      source: "third_party",
+      issuedBy: preacherId || null,
+      ...(preacher ? { thirdPartyAttribution: preacher } : {}),
     };
 
     let holder;
@@ -244,6 +267,13 @@ exports.generateVolunteerQR = async (req, res) => {
       if (e.code === 11000) {
         holder = await Holder.findOne({ eventId: event._id, phone });
         if (!holder) throw e;
+        // Update name if a better one was provided
+        if (resolvedName && holder.name !== resolvedName) {
+          holder.name = resolvedName;
+          if (preacher) holder.thirdPartyAttribution = preacher;
+          if (preacherId) holder.issuedBy = preacherId;
+          await holder.save();
+        }
       } else { throw e; }
     }
 
@@ -263,7 +293,7 @@ exports.generateVolunteerQR = async (req, res) => {
     });
 
     const venueLabel = venue ? ` at ${venue}` : "";
-    console.log(`[Integration] QR generated for ${phone} at event ${event.eventCode}${venueLabel} via third-party`);
+    console.log(`[Integration] QR generated for ${phone} (${resolvedName}) at event ${event.eventCode} [${category.catCode}]${venueLabel} via third-party`);
 
     await trySendWhatsApp(phone, qrImage, holder, event, entryPoints);
 

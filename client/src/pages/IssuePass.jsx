@@ -115,11 +115,13 @@ export default function IssuePass() {
     setError('');
     setLoading(true);
     try {
+      const selectedCat = categories.find((c) => c.name === form.pass_type);
       const { pass } = await api.createPass({
         donor_name: form.donor_name,
         phone: form.phone,
         email: form.email,
         pass_type: form.pass_type,
+        category: selectedCat?.catCode || '',
         event_id: form.event_id || null,
         venue: selectedVenue || '',
         // Pass-card links must point at the public site, not the API host.
