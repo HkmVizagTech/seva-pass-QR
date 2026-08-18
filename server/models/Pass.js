@@ -24,6 +24,8 @@ const passSchema = new mongoose.Schema(
     // Main-system QR image (base64 PNG data URL) — shown on the pass card.
     main_qr_image: { type: String, default: '' },
     status: { type: String, enum: PASS_STATUSES, default: 'unused', index: true },
+    // WhatsApp delivery tracking: 'pending' (not yet sent), 'sent', 'delivered', 'failed'.
+    delivery_status: { type: String, enum: ['pending', 'sent', 'delivered', 'failed'], default: 'pending' },
     event_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Event', default: null, index: true },
     issued_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     checked_in_at: { type: Date, default: null },

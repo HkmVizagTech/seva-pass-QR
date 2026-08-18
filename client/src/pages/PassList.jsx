@@ -152,7 +152,7 @@ function MyPasses() {
                       <span className={`badge badge-${h.qrPass?.status || 'none'}`}>{h.qrPass?.status || 'no pass'}</span>
                     </td>
                     <td>{bahumanaLabel(h)}</td>
-                    <td>{h.qrPass?.deliveryStatus || '—'}</td>
+                    <td>{h.qrPass?.delivery_status || '—'}</td>
                     <td className="ta-r">
                       <div className="actions">
                         {h.qrPass?.qrId && (
@@ -183,7 +183,7 @@ function MyPasses() {
                   <div><b>Category</b>{h.catId?.name || '—'}{h.catId?.catCode ? ` (${h.catId.catCode})` : ''}</div>
                   <div><b>Event</b>{h.eventId?.name || '—'}</div>
                   <div><b>Bahumana</b>{bahumanaLabel(h)}</div>
-                  <div><b>Delivered</b>{h.qrPass?.deliveryStatus || '—'}</div>
+                  <div><b>Delivered</b>{h.qrPass?.delivery_status || '—'}</div>
                 </div>
                 {h.qrPass?.qrId && (
                   <div className="pass-item-actions">
@@ -212,7 +212,7 @@ function MyPasses() {
 
       {/* QR modal */}
       {qrModal && (
-        <div className="qr-modal-backdrop" onClick={() => { setQrModal(null); setQrUrl(''); }}>
+        <div className="qr-modal-backdrop" onClick={() => { setQrModal(null); setQrUrl(''); }} onKeyDown={(e) => { if (e.key === 'Escape') { setQrModal(null); setQrUrl(''); } }} tabIndex={-1} ref={(el) => { if (el) el.focus(); }}>
           <div className="qr-modal" onClick={(e) => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <b>{qrModal.name}</b>
@@ -323,6 +323,7 @@ function AllPasses() {
                   <th>Type</th>
                   <th>Event</th>
                   <th>Status</th>
+                  <th>Delivered</th>
                   <th>Issued by</th>
                   <th className="ta-r">Actions</th>
                 </tr>
@@ -340,6 +341,15 @@ function AllPasses() {
                     <td>{p.pass_type}</td>
                     <td>{p.event_name || '—'}</td>
                     <td><span className={`badge badge-${p.status}`}>{p.status}</span></td>
+                    <td>
+                      {p.delivery_status && p.delivery_status !== 'pending' ? (
+                        <span className={`badge ${p.delivery_status === 'sent' || p.delivery_status === 'delivered' ? 'badge-used' : 'badge-revoked'}`}>
+                          {p.delivery_status}
+                        </span>
+                      ) : (
+                        <span className="sub">—</span>
+                      )}
+                    </td>
                     <td>{p.issuer_name || '—'}</td>
                     <td className="ta-r">
                       <div className="actions">
@@ -395,6 +405,13 @@ function AllPasses() {
                 <div className="pass-item-meta">
                   <div><b>Type</b>{p.pass_type}</div>
                   <div><b>Event</b>{p.event_name || '—'}</div>
+                  <div><b>Delivered</b>
+                    {p.delivery_status && p.delivery_status !== 'pending' ? (
+                      <span className={`badge ${p.delivery_status === 'sent' || p.delivery_status === 'delivered' ? 'badge-used' : 'badge-revoked'}`}>
+                        {p.delivery_status}
+                      </span>
+                    ) : '—'}
+                  </div>
                   <div><b>Issued by</b>{p.issuer_name || '—'}</div>
                 </div>
 

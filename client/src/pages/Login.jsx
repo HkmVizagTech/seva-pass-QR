@@ -117,7 +117,7 @@ export default function Login() {
             {loading ? 'Signing in…' : isPreacher ? 'Sign in as preacher' : 'Sign in'}
           </button>
         </form>
-        {!isPreacher && (
+        {!isPreacher && import.meta.env.DEV && (
           <p className="login-hint">
             Default login: <code>admin</code> / <code>admin123</code>
           </p>

@@ -197,7 +197,7 @@ export default function IssuePass() {
     );
   }
 
-  const pct = quota ? Math.round((quota.used / quota.limit) * 100) : 0;
+  const pct = quota && quota.limit > 0 ? Math.round((quota.used / quota.limit) * 100) : 0;
 
   return (
     <div className="fade-up">

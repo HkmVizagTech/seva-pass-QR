@@ -19,7 +19,14 @@ export async function sendPassQrWhatsApp(pass, { phone, caption } = {}) {
     throw new Error('A recipient phone number is required');
   }
 
-  const png = await QRCode.toBuffer(pass.qr_content, { type: 'png', margin: 1, width: 600 });
+  let png;
+  if (pass.main_qr_image) {
+    // Use the main system's gate-scannable QR image directly.
+    const base64 = String(pass.main_qr_image).replace(/^data:image\/\w+;base64,/, '');
+    png = Buffer.from(base64, 'base64');
+  } else {
+    png = await QRCode.toBuffer(pass.qr_content, { type: 'png', margin: 1, width: 600 });
+  }
 
   const form = new FormData();
   form.append('messaging_product', 'whatsapp');

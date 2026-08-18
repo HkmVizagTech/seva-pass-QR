@@ -325,6 +325,20 @@ try {
   const updMissing = await req('PUT', '/api/auth/users/000000000000000000000000', { token, body: { quota: 3 } });
   assert(updMissing.status === 404, 'updating unknown user → 404');
 
+
+  // ---- Delete devotee ----
+  const delForbidden = await req('DELETE', `/api/auth/users/${newUserId}`, { token: devToken });
+  assert(delForbidden.status === 403, 'non-admin cannot delete users');
+
+  const delNotFound = await req('DELETE', '/api/auth/users/000000000000000000000000', { token });
+  assert(delNotFound.status === 404, 'deleting unknown user \u2192 404');
+
+  const del = await req('DELETE', `/api/auth/users/${newUserId}`, { token });
+  assert(del.status === 200 && del.data.ok === true, 'admin deletes devotee');
+
+  const delGone = await req('DELETE', `/api/auth/users/${newUserId}`, { token });
+  assert(delGone.status === 404, 'deleted user \u2192 404');
+
   // Raising quota to 5 lets the devotee issue more passes now
   const devPass4 = await req('POST', '/api/passes', {
     token: devToken,

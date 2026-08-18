@@ -59,7 +59,7 @@ export default function PublicPass() {
           <div className={`public-status-banner status-${pass.status}`}>
             {pass.status === 'used' ? (
               <>
-                <CheckIcon size={15} /> Entry confirmed · {parseDate(pass.checked_in_at).toLocaleString()}
+                <CheckIcon size={15} /> Entry confirmed · {pass.checked_in_at ? parseDate(pass.checked_in_at).toLocaleString() : '—'}
               </>
             ) : pass.status === 'revoked' ? (
               <>

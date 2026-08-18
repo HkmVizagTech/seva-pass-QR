@@ -127,6 +127,7 @@ export const api = {
   users: () => request('/api/auth/users'),
   createUser: (body) => request('/api/auth/users', { method: 'POST', body: JSON.stringify(body) }),
   updateUser: (id, body) => request(`/api/auth/users/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteUser: (id) => request(`/api/auth/users/${id}`, { method: 'DELETE' }),
 
   stats: () => request('/api/stats'),
   events: (params) => request('/api/events' + qs(params)),
@@ -168,7 +169,7 @@ export async function downloadQrPng(id, filename) {
   document.body.appendChild(a);
   a.click();
   a.remove();
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 100);
 }
 
 export async function shareWhatsApp(id, phone, donorName, passToken, mainQrImage) {

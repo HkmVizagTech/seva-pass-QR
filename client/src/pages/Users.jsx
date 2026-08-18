@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api.js';
-import { UsersIcon, PlusIcon, EditIcon } from '../components/icons.jsx';
+import { UsersIcon, PlusIcon, EditIcon, TrashIcon } from '../components/icons.jsx';
 
 const ROLES = ['admin', 'devotee'];
 const EMPTY = { username: '', password: '', name: '', role: 'devotee', quota: 30, short_code: '' };
 
 export default function Users() {
   const [users, setUsers] = useState([]);
+  const [events, setEvents] = useState([]);
   const [form, setForm] = useState(EMPTY);
   const [editing, setEditing] = useState(null);
   const [editForm, setEditForm] = useState(null);
@@ -23,6 +24,9 @@ export default function Users() {
   };
 
   useEffect(load, []);
+  useEffect(() => {
+    api.events().then(({ events }) => setEvents(events || [])).catch(() => {});
+  }, []);
 
   const set = (key) => (e) =>
     setForm((f) => ({ ...f, [key]: key === 'quota' ? Number(e.target.value) : e.target.value }));
@@ -46,7 +50,14 @@ export default function Users() {
 
   const startEdit = (u) => {
     setEditing(u.id);
-    setEditForm({ name: u.name, role: u.role, quota: u.quota, short_code: u.short_code || '', password: '' });
+    setEditForm({
+      name: u.name,
+      role: u.role,
+      quota: u.quota,
+      short_code: u.short_code || '',
+      password: '',
+      event_quotas: { ...(u.event_quotas || {}) },
+    });
     setError('');
     setSuccess('');
   };
@@ -75,6 +86,22 @@ export default function Users() {
 
   const editSet = (key) => (e) =>
     setEditForm((f) => ({ ...f, [key]: key === 'quota' ? Number(e.target.value) : e.target.value }));
+
+  const deleteUser = async (u) => {
+    if (!window.confirm(`Delete devotee "${u.name}"? This cannot be undone.`)) return;
+    setError('');
+    setSuccess('');
+    setLoading(true);
+    try {
+      await api.deleteUser(u.id);
+      setSuccess(`Devotee "${u.name}" deleted.`);
+      load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="fade-up">
@@ -194,6 +221,87 @@ export default function Users() {
                                 <input type="password" value={editForm.password} onChange={editSet('password')} placeholder="Leave blank to keep" autoComplete="new-password" />
                               </label>
                             </div>
+                            {events.length > 0 && (
+                              <div style={{ marginTop: 8 }}>
+                                <span className="sub" style={{ fontSize: '0.75rem' }}>Per-event quotas (overrides global quota for that event):</span>
+                                {Object.entries(editForm.event_quotas || {}).map(([evId, q]) => (
+                                  <div key={evId} className="form-row" style={{ alignItems: 'end', gap: 6, marginTop: 4 }}>
+                                    <span style={{ fontSize: '0.82rem', flex: 1 }}>
+                                      {events.find((e) => e.id === evId)?.name || evId}
+                                    </span>
+                                    <input
+                                      type="number"
+                                      min="1"
+                                      inputMode="numeric"
+                                      style={{ width: 80 }}
+                                      value={q}
+                                      onChange={(e) =>
+                                        setEditForm((f) => ({
+                                          ...f,
+                                          event_quotas: { ...f.event_quotas, [evId]: Number(e.target.value) || 1 },
+                                        }))
+                                      }
+                                    />
+                                    <button
+                                      type="button"
+                                      className="btn btn-ghost btn-sm"
+                                      style={{ color: 'var(--red)', padding: '4px 8px' }}
+                                      onClick={() =>
+                                        setEditForm((f) => {
+                                          const eq = { ...f.event_quotas };
+                                          delete eq[evId];
+                                          return { ...f, event_quotas: eq };
+                                        })
+                                      }
+                                    >
+                                      ✕
+                                    </button>
+                                  </div>
+                                ))}
+                                <div className="form-row" style={{ alignItems: 'end', gap: 6, marginTop: 6 }}>
+                                  <select
+                                    className="input"
+                                    id="add-event-quota"
+                                    style={{ flex: 1 }}
+                                    defaultValue=""
+                                  >
+                                    <option value="">Add event quota…</option>
+                                    {events
+                                      .filter((ev) => !editForm.event_quotas?.[ev.id])
+                                      .map((ev) => (
+                                        <option key={ev.id} value={ev.id}>{ev.name}</option>
+                                      ))}
+                                  </select>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    inputMode="numeric"
+                                    style={{ width: 80 }}
+                                    placeholder="Quota"
+                                    id="event-quota-val"
+                                    defaultValue={30}
+                                  />
+                                  <button
+                                    type="button"
+                                    className="btn btn-ghost btn-sm"
+                                    onClick={() => {
+                                      const sel = document.getElementById('add-event-quota');
+                                      const val = document.getElementById('event-quota-val');
+                                      if (sel?.value && val?.value) {
+                                        setEditForm((f) => ({
+                                          ...f,
+                                          event_quotas: { ...f.event_quotas, [sel.value]: Number(val.value) || 1 },
+                                        }));
+                                        sel.value = '';
+                                        val.value = 30;
+                                      }
+                                    }}
+                                  >
+                                    <PlusIcon size={14} />
+                                  </button>
+                                </div>
+                              </div>
+                            )}
                             <div className="actions">
                               <button className="btn btn-primary btn-sm" disabled={loading}>Save</button>
                               <button type="button" className="btn btn-ghost btn-sm" onClick={cancelEdit}>Cancel</button>
@@ -214,7 +322,21 @@ export default function Users() {
                             )}
                           </td>
                           <td><span className={`badge ${u.role === 'admin' ? 'badge-main' : ''}`}>{u.role}</span></td>
-                          <td>{u.quota}</td>
+                          <td>
+                            {u.quota}
+                            {u.event_quotas && Object.keys(u.event_quotas).length > 0 && (
+                              <div className="sub" style={{ fontSize: '0.7rem', lineHeight: 1.4 }}>
+                                {Object.entries(u.event_quotas).map(([evId, info]) => {
+                                  const ev = events.find((e) => e.id === evId);
+                                  return (
+                                    <div key={evId}>
+                                      {ev?.name || evId}: {info.used}/{info.quota}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </td>
                           <td>
                             {u.used}{' '}
                             <span className={`badge ${u.used >= u.quota ? 'badge-revoked' : ''}`}>
@@ -222,9 +344,14 @@ export default function Users() {
                             </span>
                           </td>
                           <td className="ta-r">
-                            <button className="btn btn-ghost btn-sm" onClick={() => startEdit(u)}>
-                              <EditIcon size={14} /> Edit
-                            </button>
+                            <div className="actions">
+                              <button className="btn btn-ghost btn-sm" onClick={() => startEdit(u)}>
+                                <EditIcon size={14} /> Edit
+                              </button>
+                              <button className="btn btn-ghost btn-sm" style={{ color: 'var(--red)' }} onClick={() => deleteUser(u)} aria-label={`Delete devotee ${u.name}`}>
+                                <TrashIcon size={14} />
+                              </button>
+                            </div>
                           </td>
                         </>
                       )}

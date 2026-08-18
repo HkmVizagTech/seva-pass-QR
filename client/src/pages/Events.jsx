@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { api } from '../api.js';
+import { api, parseDate } from '../api.js';
 import { CalendarIcon, PlusIcon, LocationIcon, RefreshIcon } from '../components/icons.jsx';
 
 export default function Events() {
@@ -131,7 +131,7 @@ export default function Events() {
                         <LocationIcon size={11} />
                         {ev.location || 'No location'}
                       </span>
-                      {ev.date ? ` · ${new Date(ev.date).toLocaleDateString()}` : ''}
+                      {ev.date ? ` · ${parseDate(ev.date).toLocaleDateString()}` : ''}
                     </div>
                   </div>
                   <span className="badge">{ev.pass_count} pass(es)</span>

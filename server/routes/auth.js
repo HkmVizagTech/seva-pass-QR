@@ -90,24 +90,48 @@ router.get('/users', requireAuth, wrap(async (req, res) => {
   if (req.user.role !== 'admin') {
     return res.status(403).json({ error: 'Admin access required' });
   }
-  const users = await User.find().select('username name role quota short_code created_at').sort({ created_at: 1 }).lean();
+  const users = await User.find().select('username name role quota event_quotas short_code created_at').sort({ created_at: 1 }).lean();
 
-  // Count non-revoked passes per devotee so the admin page can show quota usage.
+  // Count non-revoked passes per devotee (total + per-event) so the admin page
+  // can show quota usage for both global and per-event quotas.
   const usedByUser = await Pass.aggregate([
     { $match: { issued_by: { $in: users.map((u) => u._id) }, status: { $ne: 'revoked' } } },
-    { $group: { _id: '$issued_by', count: { $sum: 1 } } },
+    { $group: { _id: { user: '$issued_by', event: '$event_id' }, count: { $sum: 1 } } },
   ]);
-  const usedMap = new Map(usedByUser.map((r) => [String(r._id), r.count]));
-  const withUsage = users.map((u) => ({
-    id: u._id.toString(),
-    username: u.username,
-    name: u.name,
-    role: u.role,
-    quota: u.quota || 30,
-    short_code: u.short_code || '',
-    created_at: u.created_at,
-    used: usedMap.get(String(u._id)) || 0,
-  }));
+  const usedMap = new Map();
+  const usedByEventMap = new Map();
+  for (const r of usedByUser) {
+    const userId = String(r._id.user);
+    const eventId = r._id.event ? String(r._id.event) : null;
+    const prev = usedMap.get(userId) || 0;
+    usedMap.set(userId, prev + r.count);
+    if (eventId) {
+      const key = `${userId}:${eventId}`;
+      usedByEventMap.set(key, (usedByEventMap.get(key) || 0) + r.count);
+    }
+  }
+  const withUsage = users.map((u) => {
+    const eventQuotas = {};
+    if (u.event_quotas && u.event_quotas.size) {
+      for (const [evId, evQuota] of u.event_quotas) {
+        eventQuotas[evId] = {
+          quota: evQuota,
+          used: usedByEventMap.get(`${u._id}:${evId}`) || 0,
+        };
+      }
+    }
+    return {
+      id: u._id.toString(),
+      username: u.username,
+      name: u.name,
+      role: u.role,
+      quota: u.quota || 30,
+      event_quotas: eventQuotas,
+      short_code: u.short_code || '',
+      created_at: u.created_at,
+      used: usedMap.get(String(u._id)) || 0,
+    };
+  });
 
   res.json({ users: withUsage });
 }));
@@ -119,6 +143,9 @@ router.post('/users', requireAuth, wrap(async (req, res) => {
   const { username, password, name, role = 'devotee', quota, short_code } = req.body || {};
   if (!username || !password || !name) {
     return res.status(400).json({ error: 'username, password and name are required' });
+  }
+  if (!['admin', 'devotee'].includes(role)) {
+    return res.status(400).json({ error: 'role must be admin or devotee' });
   }
   const exists = await User.findOne({ username: username.trim().toLowerCase() });
   if (exists) {
@@ -152,7 +179,7 @@ router.put('/users/:id', requireAuth, wrap(async (req, res) => {
     return res.status(404).json({ error: 'User not found' });
   }
 
-  const { name, role, quota, password, short_code } = req.body || {};
+  const { name, role, quota, password, short_code, event_quotas } = req.body || {};
 
   if (name !== undefined) {
     if (!String(name).trim()) return res.status(400).json({ error: 'name cannot be empty' });
@@ -174,9 +201,46 @@ router.put('/users/:id', requireAuth, wrap(async (req, res) => {
   if (password !== undefined && password !== '') {
     user.password_hash = bcrypt.hashSync(password, 10);
   }
+  if (event_quotas !== undefined && event_quotas !== null) {
+    // event_quotas is { eventId: quotaNumber } — only valid ObjectIds with positive ints.
+    const cleaned = {};
+    if (typeof event_quotas === 'object' && !Array.isArray(event_quotas)) {
+      for (const [evId, q] of Object.entries(event_quotas)) {
+        if (mongoose.isValidObjectId(evId) && Number.isInteger(Number(q)) && Number(q) >= 1) {
+          cleaned[evId] = Number(q);
+        }
+      }
+    }
+    user.event_quotas = cleaned;
+  }
 
   await user.save();
   res.json({ user: publicUser(user) });
+}));
+
+router.delete('/users/:id', requireAuth, wrap(async (req, res) => {
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+  if (!mongoose.isValidObjectId(req.params.id)) {
+    return res.status(400).json({ error: 'Invalid user id' });
+  }
+  if (req.user.id === req.params.id) {
+    return res.status(400).json({ error: 'Cannot delete your own account' });
+  }
+  const user = await User.findById(req.params.id);
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+  // Prevent deleting the last admin account.
+  if (user.role === 'admin') {
+    const adminCount = await User.countDocuments({ role: 'admin' });
+    if (adminCount <= 1) {
+      return res.status(400).json({ error: 'Cannot delete the last admin account' });
+    }
+  }
+  await User.findByIdAndDelete(req.params.id);
+  res.json({ ok: true });
 }));
 
 export default router;

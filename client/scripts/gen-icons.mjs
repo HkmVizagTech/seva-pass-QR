@@ -34,16 +34,101 @@ function chunk(type, data) {
   return Buffer.concat([len, body, crc]);
 }
 
-const BG = [17, 22, 58]; // krishna midnight blue
-const GOLD = [251, 191, 36]; // gold ring / centre dot
+const BG = [17, 22, 58];       // krishna midnight blue
+const GOLD = [251, 191, 36];   // saffron gold
+const CREAM = [255, 251, 240]; // cream highlight
 
-// Simple seal mark: a gold ring around a gold centre dot on Krishna blue.
-// Kept inside the centre 72% so it also works as a maskable icon.
-function shade(cx, cy) {
-  const r = Math.hypot(cx, cy);
-  if (r <= 0.36 && r >= 0.3) return GOLD;
-  if (r <= 0.16) return GOLD;
-  return BG;
+// Thick stroked arc: returns the distance from point (px, py) to the nearest
+// point on an arc of given center, radius, angle range, and stroke thickness.
+function arcDist(px, py, cx, cy, r, t0, t1, thick) {
+  const dx = px - cx;
+  const dy = py - cy;
+  const dist = Math.hypot(dx, dy);
+  const angle = Math.atan2(dy, dx);
+  const radDist = Math.abs(dist - r);
+  // Check if angle is within the arc range (handles wrap-around).
+  let inArc = false;
+  if (t1 >= t0) {
+    inArc = angle >= t0 && angle <= t1;
+  } else {
+    inArc = angle >= t0 || angle <= t1;
+  }
+  if (inArc) return radDist;
+  // Not on the arc — return distance to nearest endpoint.
+  const d0 = Math.hypot(px - (cx + r * Math.cos(t0)), py - (cy + r * Math.sin(t0)));
+  const d1 = Math.hypot(px - (cx + r * Math.cos(t1)), py - (cy + r * Math.sin(t1)));
+  return Math.min(d0, d1);
+}
+
+// Thick stroked line segment: distance from (px,py) to line from (x0,y0)-(x1,y1).
+function lineDist(px, py, x0, y0, x1, y1) {
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return Math.hypot(px - x0, py - y0);
+  let t = ((px - x0) * dx + (py - y0) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (x0 + t * dx), py - (y0 + t * dy));
+}
+
+// Distance from (px,py) to a filled circle.
+function circleDist(px, py, cx, cy, r) {
+  return Math.max(0, Math.hypot(px - cx, py - cy) - r);
+}
+
+// ─── Om symbol shape definition ──────────────────────────────────────────────
+// Draws a simplified Om (ॐ) using thick arcs and circles on a dark blue
+// background with golden strokes. All coordinates are in [-0.5, 0.5] space.
+//
+// The Om consists of:
+//   1. Main belly — large C-curve opening right (the characteristic rounded body)
+//   2. Inner curve — smaller arc nested inside the belly
+//   3. Tail — sweeping arc from the upper-left outward
+//   4. Horizontal bar — short line crossing the vertical stroke
+//   5. Vertical stroke — short line above the bar
+//   6. Chandra — crescent (arc) above the stroke
+//   7. Bindu — dot above the crescent
+//
+// Kept inside the centre 72% so it works as a maskable icon.
+function shade(px, py) {
+  const thick = 0.055;   // stroke thickness
+  const r1 = 0.25;       // main belly radius
+  const r2 = 0.12;       // inner curve radius
+
+  let d = Infinity;
+
+  // 1. Main belly — large C-curve opening to the right (from ~200° to ~350°).
+  d = Math.min(d, arcDist(px, py, -0.02, 0.06, r1, 3.50, 5.90, thick));
+
+  // 2. Inner curve — smaller arc nested inside the belly, opening right.
+  d = Math.min(d, arcDist(px, py, -0.04, 0.06, r2, 3.60, 5.60, thick * 0.85));
+
+  // 3. Tail — sweeping arc from upper-left, curving up and over to the right.
+  //    Starts from the top of the belly, sweeps over the top.
+  d = Math.min(d, arcDist(px, py, 0.10, -0.06, 0.18, 2.60, 4.40, thick));
+
+  // 4. Horizontal bar — short line crossing above the belly.
+  d = Math.min(d, lineDist(px, py, -0.06, -0.16, 0.14, -0.16));
+
+  // 5. Vertical stroke — short line above the bar.
+  d = Math.min(d, lineDist(px, py, 0.04, -0.16, 0.04, -0.28));
+
+  // 6. Chandra — crescent (arc) above the vertical stroke.
+  d = Math.min(d, arcDist(px, py, 0.04, -0.32, 0.08, 0.2, 2.94, thick * 0.8));
+
+  // 7. Bindu — dot above the crescent.
+  d = Math.min(d, circleDist(px, py, 0.04, -0.42, 0.032));
+
+  // Antialiased edge: map distance to alpha within one pixel of the stroke edge.
+  const alpha = Math.max(0, Math.min(1, 0.5 - d * 12));
+  if (alpha <= 0) return BG;
+
+  // Blend gold over background.
+  return [
+    Math.round(BG[0] + (GOLD[0] - BG[0]) * alpha),
+    Math.round(BG[1] + (GOLD[1] - BG[1]) * alpha),
+    Math.round(BG[2] + (GOLD[2] - BG[2]) * alpha),
+  ];
 }
 
 function makePng(size) {

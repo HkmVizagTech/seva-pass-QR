@@ -28,6 +28,7 @@ function serializePass(doc) {
     notes: doc.notes,
     qr_content: doc.qr_content,
     status: doc.status,
+    delivery_status: doc.delivery_status || 'pending',
     source: doc.source || 'local',
     recipient_id: doc.recipient_id || null,
     qr_token: doc.qr_token || '',
@@ -111,8 +112,22 @@ router.get('/categories', wrap(async (req, res) => {
   res.json({ categories });
 }));
 
-async function quotaUsed(userId) {
-  return Pass.countDocuments({ issued_by: userId, status: { $ne: 'revoked' } });
+async function quotaUsed(userId, eventId) {
+  const filter = { issued_by: userId, status: { $ne: 'revoked' } };
+  if (eventId) filter.event_id = eventId;
+  return Pass.countDocuments(filter);
+}
+
+// Per-user mutex to make quota check + pass creation atomic.
+// Prevents two concurrent requests from the same user exceeding the quota.
+const userLocks = new Map();
+async function withUserLock(userId, fn) {
+  const prev = userLocks.get(userId) || Promise.resolve();
+  const next = prev.then(fn, fn);
+  userLocks.set(userId, next.catch(() => {}));
+  // Clean up completed locks to prevent memory leaks.
+  next.then(() => { if (userLocks.get(userId) === next) userLocks.delete(userId); });
+  return next;
 }
 
 router.post('/', wrap(async (req, res) => {
@@ -147,94 +162,94 @@ router.post('/', wrap(async (req, res) => {
   // governs their issuance. The app user is also loaded for preachers' short
   // code attribution below.
   let appUser = null;
-  if (req.user.role !== 'preacher') {
-    appUser = await User.findById(req.user.id);
-    const quota = appUser?.quota || 30;
-    const used = await quotaUsed(req.user.id);
-    if (used >= quota) {
-      return res.status(403).json({
-        error: `Quota exceeded: ${used} of ${quota} passes already issued. Revoke an unused pass to free up quota.`,
-      });
-    }
-  }
 
-  const token = crypto.randomBytes(16).toString('hex');
-  const origin = baseUrl && /^https?:\/\//i.test(baseUrl) ? baseUrl.replace(/\/+$/, '') : '';
-
-  // ---- When the main system is configured, the QR comes from there (by phone) ----
-  let source = 'local';
-  let recipientId = null;
-  let qrToken = '';
-  let mainQrImage = '';
-  let qrContent = origin ? `${origin}/pass?t=${token}` : token;
-
-  if (isMainSystemConfigured()) {
-    if (!phone.trim()) {
-      return res.status(400).json({ error: 'Phone number is required to claim a QR from the main system' });
-    }
-    // Look up the selected event's event_code to send to the main system.
-    // Falls back to the env var (MAIN_SYSTEM_EVENT_ID) if no event is selected or it has no code.
-    let eventCode = '';
-    if (event_id) {
-      const ev = await Event.findById(event_id).lean();
-      eventCode = ev?.event_code || '';
-    }
-    try {
-      const claimed = await claimQr({
-        phone: phone.trim(),
-        name: donor_name.trim(),
-        email: email.trim(),
-        eventCode,
-        venue: venue || '',
-        category: (category || passType).trim(),
-        // Preachers get their passes attributed to them on the main system,
-        // so they show up under that preacher's "My Passes". App devotees are
-        // attributed by their 4-char preacher code (the link between the two).
-        preacher:
-          req.user.role === 'preacher'
-            ? req.user.name || ''
-            : (appUser?.short_code || '').trim(),
-        preacherId: req.user.role === 'preacher' ? req.user.id || null : null,
-      });
-      source = 'main-system';
-      recipientId = claimed.qrId || null;
-      qrToken = claimed.qrId || '';
-      mainQrImage = claimed.qrImage || '';
-      // The main system's gate also accepts a bare QR id, so the fallback QR
-      // content (used if the image is missing) is the id itself.
-      qrContent = claimed.qrId || qrContent;
-    } catch (err) {
-      // If the main system doesn't have this event, fall back to local QR.
-      // This allows events created only in the Seva Pass system to work.
-      if (err instanceof MainSystemError) {
-        console.warn(`[Passes] Main system claim failed (${err.message}), falling back to local QR`);
-      } else {
-        throw err;
+  // Build the pass data. For app devotees, wrap in a per-user lock so the
+  // quota check + pass creation are atomic (prevents concurrent over-issuance).
+  const buildPass = async () => {
+    if (req.user.role !== 'preacher') {
+      appUser = await User.findById(req.user.id);
+      const eventQuota = event_id && appUser?.event_quotas?.get(String(event_id));
+      const quota = eventQuota || appUser?.quota || 30;
+      const used = await quotaUsed(req.user.id, eventQuota ? event_id : null);
+      if (used >= quota) {
+        return { error: `Quota exceeded: ${used} of ${quota} passes already issued${eventQuota ? ' for this event' : ''}. Revoke an unused pass to free up quota.` };
       }
     }
+
+    const token = crypto.randomBytes(16).toString('hex');
+    const origin = baseUrl && /^https?:\/\//i.test(baseUrl) ? baseUrl.replace(/\/+$/, '') : '';
+
+    let source = 'local';
+    let recipientId = null;
+    let qrToken = '';
+    let mainQrImage = '';
+    let qrContent = origin ? `${origin}/pass?t=${token}` : token;
+
+    if (isMainSystemConfigured()) {
+      if (!phone.trim()) {
+        return { error: 'Phone number is required to claim a QR from the main system', status: 400 };
+      }
+      let eventCode = '';
+      if (event_id) {
+        const ev = await Event.findById(event_id).lean();
+        eventCode = ev?.event_code || '';
+      }
+      try {
+        const claimed = await claimQr({
+          phone: phone.trim(),
+          name: donor_name.trim(),
+          email: email.trim(),
+          eventCode,
+          venue: venue || '',
+          category: (category || passType).trim(),
+          preacher:
+            req.user.role === 'preacher'
+              ? req.user.name || ''
+              : (appUser?.short_code || '').trim(),
+          preacherId: req.user.role === 'preacher' ? req.user.id || null : null,
+        });
+        source = 'main-system';
+        recipientId = claimed.qrId || null;
+        qrToken = claimed.qrId || '';
+        mainQrImage = claimed.qrImage || '';
+        qrContent = claimed.qrId || qrContent;
+      } catch (err) {
+        if (err instanceof MainSystemError) {
+          console.warn(`[Passes] Main system claim failed (${err.message}), falling back to local QR`);
+        } else {
+          throw err;
+        }
+      }
+    }
+
+    const pass = await Pass.create({
+      token,
+      donor_name: donor_name.trim(),
+      phone: phone.trim(),
+      email: email.trim(),
+      pass_type: passType,
+      notes: notes.trim(),
+      qr_content: qrContent,
+      source,
+      recipient_id: recipientId,
+      qr_token: qrToken,
+      main_qr_image: mainQrImage,
+      event_id: event_id || null,
+      issued_by: req.user.role === 'preacher' ? null : req.user.id,
+      valid_from: valid_from || null,
+      valid_until: valid_until || null,
+    });
+
+    return { pass: await serializePassWithQr(await loadPassById(pass._id), { includeImage: true }) };
+  };
+
+  const result = req.user.role !== 'preacher'
+    ? await withUserLock(req.user.id, buildPass)
+    : await buildPass();
+  if (result.error) {
+    return res.status(result.status || 403).json({ error: result.error });
   }
-
-  const pass = await Pass.create({
-    token,
-    donor_name: donor_name.trim(),
-    phone: phone.trim(),
-    email: email.trim(),
-    pass_type: passType,
-    notes: notes.trim(),
-    qr_content: qrContent,
-    source,
-    recipient_id: recipientId,
-    qr_token: qrToken,
-    main_qr_image: mainQrImage,
-    event_id: event_id || null,
-    // Preacher-issued passes are attributed on the main system (holder.preacherId)
-    // — their id isn't an app user, so don't store it as issued_by.
-    issued_by: req.user.role === 'preacher' ? null : req.user.id,
-    valid_from: valid_from || null,
-    valid_until: valid_until || null,
-  });
-
-  res.status(201).json({ pass: await serializePassWithQr(await loadPassById(pass._id), { includeImage: true }) });
+  res.status(201).json(result);
 }));
 
 router.get('/:id/qr.png', wrap(async (req, res) => {
@@ -262,6 +277,13 @@ router.get('/:id', wrap(async (req, res) => {
   res.json({ pass: await serializePassWithQr(pass, { includeImage: true }) });
 }));
 
+// ---- Helper: only admins or the pass issuer can operate on a pass. ----
+function assertOwnership(req, pass) {
+  if (req.user.role === 'admin') return; // admins can do anything
+  if (String(pass.issued_by) === String(req.user.id)) return; // issuer owns it
+  return false;
+}
+
 router.post('/:id/send-whatsapp', wrap(async (req, res) => {
   if (!isWhatsAppConfigured()) {
     return res.status(501).json({
@@ -272,7 +294,12 @@ router.post('/:id/send-whatsapp', wrap(async (req, res) => {
   if (!pass) {
     return res.status(404).json({ error: 'Pass not found' });
   }
+  if (assertOwnership(req, pass) === false) {
+    return res.status(403).json({ error: 'You do not have permission to send WhatsApp for this pass' });
+  }
   const result = await sendPassQrWhatsApp(pass);
+  pass.delivery_status = 'sent';
+  await pass.save();
   res.json({ ok: true, result });
 }));
 
@@ -280,6 +307,9 @@ router.post('/:id/revoke', wrap(async (req, res) => {
   const pass = await Pass.findById(req.params.id);
   if (!pass) {
     return res.status(404).json({ error: 'Pass not found' });
+  }
+  if (assertOwnership(req, pass) === false) {
+    return res.status(403).json({ error: 'You do not have permission to revoke this pass' });
   }
   pass.status = 'revoked';
   await pass.save();
