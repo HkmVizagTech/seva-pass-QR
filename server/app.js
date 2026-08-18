@@ -32,8 +32,9 @@ export function createApp() {
     allowedOrigins.length > 0
       ? {
           origin(origin, cb) {
-            // Allow requests with no origin (mobile apps, curl, server-to-server).
-            if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+            // Allow requests with no origin (curl, server-to-server).
+            // Always allow localhost (Capacitor native app WebView).
+            if (!origin || allowedOrigins.includes(origin) || /^https?:\/\/localhost(:\d+)?$/.test(origin)) return cb(null, true);
             cb(new Error('Not allowed by CORS'));
           },
         }
