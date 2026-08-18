@@ -154,6 +154,8 @@ export const api = {
   categories: (eventCode) => request('/api/passes/categories' + qs({ event_code: eventCode })),
 
   publicPass: (token) => request(`/api/public/passes/${token}`),
+
+  testMainSystem: () => request('/api/passes/test-main-system'),
 };
 
 export async function downloadQrPng(id, filename) {

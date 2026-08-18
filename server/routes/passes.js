@@ -112,6 +112,25 @@ router.get('/categories', wrap(async (req, res) => {
   res.json({ categories });
 }));
 
+// Diagnostic: check main-system connectivity (admin only).
+router.get('/test-main-system', wrap(async (req, res) => {
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Admin only' });
+  }
+  const { isMainSystemConfigured } = await import('../services/mainSystem.js');
+  const configured = isMainSystemConfigured();
+  if (!configured) {
+    return res.json({ configured: false, error: 'MAIN_SYSTEM_API_URL is not set' });
+  }
+  try {
+    const { fetchEvents } = await import('../services/mainSystem.js');
+    const events = await fetchEvents();
+    res.json({ configured: true, events: events.length, sample: events.slice(0, 3) });
+  } catch (err) {
+    res.json({ configured: true, error: err.message });
+  }
+}));
+
 async function quotaUsed(userId, eventId) {
   const filter = { issued_by: userId, status: { $ne: 'revoked' } };
   if (eventId) filter.event_id = eventId;
@@ -215,7 +234,8 @@ router.post('/', wrap(async (req, res) => {
         qrContent = claimed.qrId || qrContent;
       } catch (err) {
         if (err instanceof MainSystemError) {
-          console.warn(`[Passes] Main system claim failed (${err.message}), falling back to local QR`);
+          console.error(`[Passes] Main system claim failed: ${err.message}`);
+          return { error: `Could not generate gate QR: ${err.message}`, status: 502 };
         } else {
           throw err;
         }
