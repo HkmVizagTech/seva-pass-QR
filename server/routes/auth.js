@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
+import rateLimit from 'express-rate-limit';
 import User from '../models/User.js';
 import Pass from '../models/Pass.js';
 import { requireAuth, signToken, publicUser } from '../auth.js';
@@ -10,7 +11,10 @@ const router = Router();
 
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
-router.post('/login', wrap(async (req, res) => {
+// Only rate-limit the actual login endpoints, not /me or /users.
+const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false });
+
+router.post('/login', loginLimiter, wrap(async (req, res) => {
   const { username, password } = req.body || {};
   if (!username || !password) {
     return res.status(400).json({ error: 'Username and password are required' });
@@ -47,7 +51,7 @@ router.get('/me', requireAuth, wrap(async (req, res) => {
 // Preacher / devotee login against the main ISKCON system.
 // On success we mint an app JWT carrying the main-system token so later
 // preacher requests can be forwarded without asking for credentials again.
-router.post('/preacher-login', wrap(async (req, res) => {
+router.post('/preacher-login', loginLimiter, wrap(async (req, res) => {
   const { email, phone, password } = req.body || {};
   if (!password) {
     return res.status(400).json({ error: 'Password is required' });

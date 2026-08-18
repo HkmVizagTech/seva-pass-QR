@@ -46,12 +46,9 @@ export function createApp() {
   const globalLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 500, standardHeaders: true, legacyHeaders: false });
   app.use('/api/', globalLimiter);
 
-  // Strict rate limit on auth endpoints — prevents brute-force attacks.
-  const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20, standardHeaders: true, legacyHeaders: false });
-
   app.get('/api/health', (req, res) => res.json({ ok: true }));
 
-  app.use('/api/auth', authLimiter, authRoutes);
+  app.use('/api/auth', authRoutes);
   app.use('/api/events', requireAuth, eventRoutes);
   app.use('/api/passes', requireAuth, passRoutes);
   app.use('/api/stats', requireAuth, statsRoutes);
