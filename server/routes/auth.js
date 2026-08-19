@@ -195,10 +195,13 @@ router.post('/users', requireAuth, wrap(async (req, res) => {
   }
   const cleanCode = String(short_code || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
 
-  // If creating a devotee with a short_code, also create on the main system
-  if (role === 'devotee' && cleanCode) {
+  // All devotees are synced to the main system — email is required.
+  if (role === 'devotee') {
+    if (!cleanCode) {
+      return res.status(400).json({ error: 'short_code is required for devotees' });
+    }
     if (!email && !phone) {
-      return res.status(400).json({ error: 'email or phone is required for main system sync' });
+      return res.status(400).json({ error: 'email is required for devotees (used to log in on main system)' });
     }
     try {
       await createMainPreacher({

@@ -20,18 +20,34 @@ export default function Login() {
         setLoading(false);
         return;
       }
-      // Try local login first (admin — username-based)
-      try {
+      const isEmail = val.includes('@');
+      if (isEmail) {
+        // Email → try main system first, then local fallback
+        try {
+          const { token } = await api.preacherLogin({ email: val, password });
+          setToken(token);
+          navigate('/');
+          return;
+        } catch {
+          // Main system rejected — try local
+        }
         const { token } = await api.login(val, password);
         setToken(token);
         navigate('/');
-        return;
-      } catch {
-        // If not a valid username, try main system login (devotee — email-based)
+      } else {
+        // Username → try local first, then main system
+        try {
+          const { token } = await api.login(val, password);
+          setToken(token);
+          navigate('/');
+          return;
+        } catch {
+          // Local rejected — try main system (user might have entered email without @)
+        }
+        const { token } = await api.preacherLogin({ email: val, password });
+        setToken(token);
+        navigate('/');
       }
-      const { token } = await api.preacherLogin({ email: val, password });
-      setToken(token);
-      navigate('/');
     } catch (err) {
       setError(err.message);
     } finally {

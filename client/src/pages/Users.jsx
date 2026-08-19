@@ -149,8 +149,8 @@ export default function Users() {
             {form.role !== 'admin' && (
               <>
                 <label>
-                  Email (for main system sync)
-                  <input type="email" value={form.email} onChange={set('email')} placeholder="devotee@example.com" autoComplete="off" />
+                  Email * (used to log in on main system)
+                  <input type="email" value={form.email} onChange={set('email')} required placeholder="devotee@example.com" autoComplete="off" />
                 </label>
                 <label>
                   Phone (alternative to email)
