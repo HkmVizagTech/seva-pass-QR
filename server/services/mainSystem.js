@@ -329,3 +329,31 @@ export async function batchGetQrPassDetails(qrIds) {
   }
   return results;
 }
+
+/**
+ * Update which categories the devotee app may use for an event.
+ * @param {string} eventCode - The event code (e.g. "TEST")
+ * @param {Array|null} categories - [{ catCode, name, limit }] or null to clear
+ */
+export async function updateDevoteeCategories(eventCode, categories) {
+  if (!MAIN_API_URL) {
+    throw new MainSystemError('Main system is not configured', 503);
+  }
+  const headers = { 'Content-Type': 'application/json' };
+  if (MAIN_API_KEY) headers['x-api-key'] = MAIN_API_KEY;
+  let res;
+  try {
+    res = await fetch(`${MAIN_API_URL}/api/integration/events/${encodeURIComponent(eventCode)}/devotee-categories`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ categories }),
+    });
+  } catch (err) {
+    throw new MainSystemError(`Main system unreachable (${err.message})`, 502);
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.status === false) {
+    throw new MainSystemError(data.message || `Main system request failed (${res.status})`, res.status || 502);
+  }
+  return data;
+}

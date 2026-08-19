@@ -133,6 +133,9 @@ export const api = {
   events: (params) => request('/api/events' + qs(params)),
   createEvent: (body) => request('/api/events', { method: 'POST', body: JSON.stringify(body) }),
   syncEvents: () => request('/api/events/sync', { method: 'POST' }),
+  eventCategories: (eventId) => request(`/api/events/${eventId}/categories`),
+  updateDevoteeCategories: (eventId, categories) =>
+    request(`/api/events/${eventId}/devotee-categories`, { method: 'PATCH', body: JSON.stringify({ categories }) }),
 
   // Preacher-scoped views (main system, proxied).
   myHolders: (params) => request('/api/preachers/me/holders' + qs(params)),

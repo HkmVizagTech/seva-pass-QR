@@ -1,6 +1,128 @@
 import React, { useEffect, useState } from 'react';
 import { api, parseDate } from '../api.js';
-import { CalendarIcon, PlusIcon, LocationIcon, RefreshIcon } from '../components/icons.jsx';
+import { CalendarIcon, PlusIcon, LocationIcon, RefreshIcon, SettingsIcon, CheckIcon } from '../components/icons.jsx';
+
+function ConfigureModal({ event, onClose, onSaved }) {
+  const [allCategories, setAllCategories] = useState([]);
+  const [selected, setSelected] = useState({});
+  const [limits, setLimits] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    setLoading(true);
+    api
+      .eventCategories(event.id)
+      .then(({ categories }) => {
+        setAllCategories(categories || []);
+        const sel = {};
+        const lmt = {};
+        for (const c of categories || []) {
+          sel[c.catCode] = true;
+          lmt[c.catCode] = c.limit != null ? c.limit : '';
+        }
+        setSelected(sel);
+        setLimits(lmt);
+      })
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [event.id]);
+
+  const toggle = (code) => setSelected((s) => ({ ...s, [code]: !s[code] }));
+
+  const save = async () => {
+    setSaving(true);
+    setError('');
+    try {
+      const categories = allCategories
+        .filter((c) => selected[c.catCode])
+        .map((c) => ({
+          catCode: c.catCode,
+          name: c.name,
+          limit: limits[c.catCode] !== '' && limits[c.catCode] != null ? Number(limits[c.catCode]) : null,
+        }));
+      await api.updateDevoteeCategories(event.id, categories);
+      onSaved();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const clearAll = async () => {
+    setSaving(true);
+    setError('');
+    try {
+      await api.updateDevoteeCategories(event.id, null);
+      onSaved();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="qr-modal-backdrop" onClick={onClose}>
+      <div className="qr-modal" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <h2 style={{ margin: 0 }}>Configure: {event.name}</h2>
+          <button className="qr-modal-close" onClick={onClose}>&times;</button>
+        </div>
+        <p className="sub" style={{ marginBottom: 12 }}>
+          Choose which pass types devotees can issue from the app for this event. Set limits or leave blank for unlimited.
+        </p>
+        {loading ? (
+          <div className="loading">Loading categories…</div>
+        ) : allCategories.length === 0 ? (
+          <p className="muted">No categories found for this event on the main system.</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+            {allCategories.map((c) => (
+              <div key={c.catCode} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: selected[c.catCode] ? 'var(--accent-bg, #f0f4ff)' : 'var(--card-bg, #fff)', borderRadius: 8, border: '1px solid var(--border, #e2e8f0)' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', flex: 1 }}>
+                  <input
+                    type="checkbox"
+                    checked={!!selected[c.catCode]}
+                    onChange={() => toggle(c.catCode)}
+                    style={{ width: 18, height: 18 }}
+                  />
+                  <span style={{ fontWeight: 500 }}>{c.name || c.catCode}</span>
+                  <span className="sub" style={{ fontSize: '0.75rem' }}>({c.catCode})</span>
+                </label>
+                {selected[c.catCode] && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <input
+                      type="number"
+                      min="1"
+                      inputMode="numeric"
+                      style={{ width: 70, padding: '4px 8px', fontSize: '0.85rem' }}
+                      placeholder="Max"
+                      value={limits[c.catCode] ?? ''}
+                      onChange={(e) => setLimits((l) => ({ ...l, [c.catCode]: e.target.value }))}
+                    />
+                    <span className="sub" style={{ fontSize: '0.7rem' }}>{c.used ?? 0} used</span>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        {error && <div className="alert alert-error">{error}</div>}
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button className="btn btn-ghost btn-sm" onClick={clearAll} disabled={saving}>
+            Show all (clear restrictions)
+          </button>
+          <button className="btn btn-primary btn-sm" onClick={save} disabled={saving || loading}>
+            <CheckIcon size={14} /> {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function Events() {
   const [events, setEvents] = useState([]);
@@ -10,13 +132,17 @@ export default function Events() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState('');
+  const [configEvent, setConfigEvent] = useState(null);
 
-  useEffect(() => {
-    // The app shows only live or upcoming events.
+  const load = () => {
     api
       .events({ live: 1 })
       .then(({ events }) => setEvents(events))
       .catch((e) => setError(e.message));
+  };
+
+  useEffect(() => {
+    load();
     api
       .me()
       .then(({ user }) => setIsAdmin(user.role === 'admin'))
@@ -135,12 +261,29 @@ export default function Events() {
                     </div>
                   </div>
                   <span className="badge">{ev.pass_count} pass(es)</span>
+                  {isAdmin && ev.event_code && (
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      title="Configure devotee pass types"
+                      onClick={() => setConfigEvent(ev)}
+                    >
+                      <SettingsIcon size={15} />
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
           )}
         </section>
       </div>
+
+      {configEvent && (
+        <ConfigureModal
+          event={configEvent}
+          onClose={() => setConfigEvent(null)}
+          onSaved={() => { setConfigEvent(null); load(); }}
+        />
+      )}
     </div>
   );
 }

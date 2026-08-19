@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import Event from '../models/Event.js';
-import { isMainSystemConfigured, fetchEvents } from '../services/mainSystem.js';
+import { requireAuth } from '../auth.js';
+import { isMainSystemConfigured, fetchEvents, fetchCategories, updateDevoteeCategories } from '../services/mainSystem.js';
 
 const router = Router();
 
@@ -155,6 +156,36 @@ router.get('/:id', wrap(async (req, res) => {
     return res.status(404).json({ error: 'Event not found' });
   }
   res.json({ event });
+}));
+
+// Get available categories for an event from the main system.
+router.get('/:id/categories', wrap(async (req, res) => {
+  const event = await Event.findById(req.params.id);
+  if (!event) {
+    return res.status(404).json({ error: 'Event not found' });
+  }
+  if (!event.event_code) {
+    return res.json({ categories: [] });
+  }
+  const categories = await fetchCategories(event.event_code);
+  res.json({ categories });
+}));
+
+// Update which categories the devotee app may use for an event.
+router.patch('/:id/devotee-categories', requireAuth, wrap(async (req, res) => {
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+  const event = await Event.findById(req.params.id);
+  if (!event) {
+    return res.status(404).json({ error: 'Event not found' });
+  }
+  if (!event.event_code) {
+    return res.status(400).json({ error: 'Event has no event code — only main system events can be configured' });
+  }
+  const { categories } = req.body || {};
+  const data = await updateDevoteeCategories(event.event_code, categories);
+  res.json(data);
 }));
 
 export default router;
