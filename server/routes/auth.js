@@ -33,16 +33,16 @@ router.post('/login', loginLimiter, wrap(async (req, res) => {
 }));
 
 router.get('/me', requireAuth, wrap(async (req, res) => {
-  // Preacher sessions don't exist in the app's user collection — their profile
-  // (name, short code) was captured from the main system at login time and is
+  // Main-system devotee sessions don't exist in the app's user collection —
+  // their profile was captured from the main system at login time and is
   // embedded in the signed app JWT, so serve it from there.
-  if (req.user.role === 'preacher') {
+  if (req.user.main_token) {
     return res.json({
       user: {
         id: req.user.id,
         username: req.user.username || '',
-        name: req.user.name || req.user.username || 'Preacher',
-        role: 'preacher',
+        name: req.user.name || req.user.username || '',
+        role: 'devotee',
         shortCode: req.user.shortCode || '',
       },
     });
@@ -54,9 +54,9 @@ router.get('/me', requireAuth, wrap(async (req, res) => {
   res.json({ user: publicUser(user) });
 }));
 
-// Preacher / devotee login against the main ISKCON system.
+// Devotee login against the main ISKCON system.
 // On success we mint an app JWT carrying the main-system token so later
-// preacher requests can be forwarded without asking for credentials again.
+// requests can be forwarded without asking for credentials again.
 router.post('/preacher-login', loginLimiter, wrap(async (req, res) => {
   const { email, phone, password } = req.body || {};
   if (!password) {
@@ -79,8 +79,8 @@ router.post('/preacher-login', loginLimiter, wrap(async (req, res) => {
     {
       id: preacher.id,
       username: preacher.shortCode || preacher.name || '',
-      name: preacher.name || preacher.shortCode || 'Preacher',
-      role: 'preacher',
+      name: preacher.name || preacher.shortCode || '',
+      role: 'devotee',
     },
     { shortCode: preacher.shortCode || '', main_token: data.token }
   );
@@ -89,8 +89,8 @@ router.post('/preacher-login', loginLimiter, wrap(async (req, res) => {
     user: {
       id: preacher.id,
       username: preacher.shortCode || '',
-      name: preacher.name || preacher.shortCode || 'Preacher',
-      role: 'preacher',
+      name: preacher.name || preacher.shortCode || '',
+      role: 'devotee',
       shortCode: preacher.shortCode || '',
     },
   });
@@ -161,7 +161,7 @@ router.get('/users', requireAuth, wrap(async (req, res) => {
         id: p._id || p.id || '',
         username: code,
         name: p.name || '',
-        role: 'preacher',
+        role: 'devotee',
         quota: 0,
         event_quotas: {},
         short_code: code,
@@ -183,8 +183,8 @@ router.post('/users', requireAuth, wrap(async (req, res) => {
   if (!username || !password || !name) {
     return res.status(400).json({ error: 'username, password and name are required' });
   }
-  if (!['admin', 'devotee', 'preacher'].includes(role)) {
-    return res.status(400).json({ error: 'role must be admin, devotee or preacher' });
+  if (!['admin', 'devotee'].includes(role)) {
+    return res.status(400).json({ error: 'role must be admin or devotee' });
   }
   const exists = await User.findOne({ username: username.trim().toLowerCase() });
   if (exists) {
@@ -195,13 +195,10 @@ router.post('/users', requireAuth, wrap(async (req, res) => {
   }
   const cleanCode = String(short_code || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
 
-  // If creating a preacher, also create on the main system
-  if (role === 'preacher') {
-    if (!cleanCode) {
-      return res.status(400).json({ error: 'short_code is required for preachers' });
-    }
+  // If creating a devotee with a short_code, also create on the main system
+  if (role === 'devotee' && cleanCode) {
     if (!email && !phone) {
-      return res.status(400).json({ error: 'email or phone is required for preachers' });
+      return res.status(400).json({ error: 'email or phone is required for main system sync' });
     }
     try {
       await createMainPreacher({
@@ -250,7 +247,7 @@ router.put('/users/:id', requireAuth, wrap(async (req, res) => {
     user.name = String(name).trim();
   }
   if (role !== undefined) {
-    if (!['admin', 'devotee', 'preacher'].includes(role)) return res.status(400).json({ error: 'role must be admin, devotee or preacher' });
+    if (!['admin', 'devotee'].includes(role)) return res.status(400).json({ error: 'role must be admin or devotee' });
     user.role = role;
   }
   if (quota !== undefined) {
@@ -304,8 +301,8 @@ router.delete('/users/:id', requireAuth, wrap(async (req, res) => {
     }
   }
 
-  // If deleting a preacher, also soft-delete on the main system
-  if (user.role === 'preacher' && user.short_code) {
+  // If deleting a devotee with a main system account, also soft-delete on the main system
+  if (user.short_code) {
     try {
       await deleteMainPreacher(user.short_code);
     } catch {

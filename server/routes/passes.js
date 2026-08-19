@@ -211,15 +211,15 @@ router.post('/', wrap(async (req, res) => {
   }
 
   // ---- Devotee quota: each app devotee may hold up to `quota` non-revoked passes.
-  // Preachers (main-system devotees) are not quota-limited — the main system
-  // governs their issuance. The app user is also loaded for preachers' short
+  // Main-system devotees (with main_token) are not quota-limited — the main
+  // system governs their issuance. The app user is also loaded for short
   // code attribution below.
   let appUser = null;
 
-  // Build the pass data. For app devotees, wrap in a per-user lock so the
+  // Build the pass data. For local devotees, wrap in a per-user lock so the
   // quota check + pass creation are atomic (prevents concurrent over-issuance).
   const buildPass = async () => {
-    if (req.user.role !== 'preacher') {
+    if (!req.user.main_token) {
       appUser = await User.findById(req.user.id);
       const eventQuota = event_id && appUser?.event_quotas?.get(String(event_id));
       const quota = eventQuota || appUser?.quota || 30;
@@ -256,10 +256,10 @@ router.post('/', wrap(async (req, res) => {
           venue: venue || '',
           category: (category || passType).trim(),
           preacher:
-            req.user.role === 'preacher'
+            req.user.main_token
               ? req.user.name || ''
               : (appUser?.short_code || '').trim(),
-          preacherId: req.user.role === 'preacher' ? req.user.id || null : null,
+          preacherId: req.user.main_token ? req.user.id || null : null,
         });
         source = 'main-system';
         recipientId = claimed.qrId || null;
@@ -299,9 +299,9 @@ router.post('/', wrap(async (req, res) => {
     return { pass: await serializePassWithQr(await loadPassById(pass._id), { includeImage: true }) };
   };
 
-  const result = req.user.role !== 'preacher'
-    ? await withUserLock(req.user.id, buildPass)
-    : await buildPass();
+  const result = req.user.main_token
+    ? await buildPass()
+    : await withUserLock(req.user.id, buildPass);
   if (result.error) {
     return res.status(result.status || 403).json({ error: result.error });
   }

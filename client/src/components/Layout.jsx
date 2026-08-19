@@ -51,11 +51,11 @@ export default function Layout() {
 
   const closeNav = () => setNavOpen(false);
   const isAdmin = user?.role === 'admin';
-  const isPreacher = user?.role === 'preacher';
+  const isDevotee = !isAdmin;
   const items = NAV_ITEMS
     .filter((i) => !i.adminOnly || isAdmin)
     .map((i) =>
-      i.to === '/passes' ? { ...i, label: isPreacher ? 'My Passes' : 'All Passes' } : i
+      i.to === '/passes' ? { ...i, label: isDevotee ? 'My Passes' : 'All Passes' } : i
     );
 
   return (
@@ -88,7 +88,7 @@ export default function Layout() {
                 <div className="user-name">{user.name}</div>
                 <div className="user-role">
                   {user.role}
-                  {isPreacher && user.shortCode ? ` · ${user.shortCode}` : ` · @${user.username}`}
+                  {user.shortCode ? ` · ${user.shortCode}` : ` · @${user.username}`}
                 </div>
               </div>
             </div>

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { UsersIcon, PlusIcon, EditIcon, TrashIcon } from '../components/icons.jsx';
 
-const ROLES = ['admin', 'devotee', 'preacher'];
+const ROLES = ['admin', 'devotee'];
 const EMPTY = { username: '', password: '', name: '', role: 'devotee', quota: 30, short_code: '', email: '', phone: '' };
 
 export default function Users() {
@@ -38,7 +38,7 @@ export default function Users() {
     setLoading(true);
     try {
       await api.createUser(form);
-      setSuccess(`${form.role === 'preacher' ? 'Preacher' : 'Devotee'} "${form.name}" created.`);
+      setSuccess(`"${form.name}" created.`);
       setForm(EMPTY);
       load();
     } catch (err) {
@@ -144,16 +144,16 @@ export default function Users() {
                 placeholder="e.g. MKGD"
                 autoComplete="off"
               />
-              <span className="sub" style={{ fontSize: '0.75rem' }}>Passes issued by this devotee are attributed to this preacher.</span>
+              <span className="sub" style={{ fontSize: '0.75rem' }}>Passes issued by this devotee are attributed to this code.</span>
             </label>
-            {form.role === 'preacher' && (
+            {form.role !== 'admin' && (
               <>
                 <label>
-                  Email (required for preachers)
-                  <input type="email" value={form.email} onChange={set('email')} placeholder="preacher@example.com" autoComplete="off" />
+                  Email (for main system sync)
+                  <input type="email" value={form.email} onChange={set('email')} placeholder="devotee@example.com" autoComplete="off" />
                 </label>
                 <label>
-                  Phone (optional, alternative to email)
+                  Phone (alternative to email)
                   <input value={form.phone} onChange={set('phone')} placeholder="9876543210" autoComplete="off" />
                 </label>
               </>
@@ -333,9 +333,9 @@ export default function Users() {
                               <span className="sub">—</span>
                             )}
                           </td>
-                          <td><span className={`badge ${u.role === 'admin' ? 'badge-main' : u.role === 'preacher' ? 'badge-used' : ''}`}>{u.role}{u.main_system ? ' (main)' : ''}</span></td>
+                          <td><span className={`badge ${u.role === 'admin' ? 'badge-main' : ''}`}>{u.role}{u.main_system ? ' (main)' : ''}</span></td>
                           <td>
-                            {u.role === 'preacher' ? (
+                            {u.main_system ? (
                               <span className="sub">N/A (main system)</span>
                             ) : (
                               <>

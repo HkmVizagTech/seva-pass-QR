@@ -6,14 +6,11 @@ const router = Router();
 
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
-// Only preacher sessions (role === 'preacher') may call these; the main-system
+// Only main-system devotee sessions may call these; the main-system
 // token was embedded in their app JWT at login time.
 function requirePreacher(req, res, next) {
-  if (req.user?.role !== 'preacher') {
-    return res.status(403).json({ error: 'Preacher access required' });
-  }
-  if (!req.user.main_token) {
-    return res.status(401).json({ error: 'Preacher session missing — please log in again' });
+  if (!req.user?.main_token) {
+    return res.status(401).json({ error: 'Main system session missing — please log in again' });
   }
   next();
 }

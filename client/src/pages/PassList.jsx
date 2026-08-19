@@ -426,7 +426,7 @@ function MyPasses() {
   );
 }
 
-// ─── Admin / preacher view: all passes ──────────────────────────────────────
+// ─── Admin / devotee view: all passes ──────────────────────────────────────
 function AllPasses({ role }) {
   const [passes, setPasses] = useState([]);
   const [events, setEvents] = useState([]);
@@ -458,7 +458,7 @@ function AllPasses({ role }) {
         <div className="page-title">
           <span className="title-icon"><ListIcon size={22} /></span>
           <div>
-            <h1>{role === 'preacher' ? 'My Passes' : 'All Passes'}</h1>
+            <h1>{role !== 'admin' ? 'My Passes' : 'All Passes'}</h1>
             <p>{passes.length} pass(es) shown</p>
           </div>
         </div>

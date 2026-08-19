@@ -19,7 +19,7 @@ const CARDS = [
 ];
 
 // Preacher dashboard cards (data comes from the main system).
-const PREACHER_CARDS = [
+const MAIN_SYSTEM_CARDS = [
   { key: 'totalHolders', label: 'My Devotees', className: 'stat-total', icon: UsersIcon },
   { key: 'activePasses', label: 'Active Passes', className: 'stat-unused', icon: TicketIcon },
   { key: 'scannedPasses', label: 'Scanned', className: 'stat-events', icon: QrIcon },
@@ -43,7 +43,7 @@ export default function Dashboard() {
     api
       .me()
       .then(({ user }) => {
-        if (user.role === 'preacher') {
+        if (user.shortCode) {
           api
             .myHolders({ limit: 8 })
             .then(({ holders }) => setRecent(holders || []))
@@ -72,8 +72,8 @@ export default function Dashboard() {
 
   if (!stats) return <div className="loading">Loading…</div>;
 
-  const isPreacher = stats.preacher === true;
-  const cards = isPreacher ? PREACHER_CARDS : CARDS;
+  const isMainSystem = stats.main_system === true;
+  const cards = isMainSystem ? MAIN_SYSTEM_CARDS : CARDS;
 
   return (
     <div className="fade-up">
@@ -82,7 +82,7 @@ export default function Dashboard() {
           <span className="title-icon"><DashboardIcon size={22} /></span>
           <div>
             <h1>Dashboard</h1>
-            <p>{isPreacher ? 'Your devotees and passes' : 'Overview of your seva passes'}</p>
+            <p>{isMainSystem ? 'Your devotees and passes' : 'Overview of your seva passes'}</p>
           </div>
         </div>
       </header>
@@ -103,7 +103,7 @@ export default function Dashboard() {
             </div>
           );
         })}
-        {!isPreacher && stats.quota && (
+        {!isMainSystem && stats.quota && (
           <div className="stat-card stat-quota">
             <span className="stat-ico"><UsersIcon size={18} /></span>
             <div className="stat-value">
@@ -114,7 +114,7 @@ export default function Dashboard() {
         )}
       </div>
 
-      {isPreacher && Array.isArray(stats.byEvent) && stats.byEvent.length > 0 && (
+      {isMainSystem && Array.isArray(stats.byEvent) && stats.byEvent.length > 0 && (
         <section className="panel">
           <div className="panel-head">
             <h2>By festival</h2>
