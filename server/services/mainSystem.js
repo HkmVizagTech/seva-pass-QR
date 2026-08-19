@@ -292,14 +292,15 @@ export async function deleteMainPreacher(id) {
 
 /**
  * Fetch QR pass details (including redemptionHistory) from the main system.
- * Used by the public pass card to show scan status.
+ * Uses the integration API endpoint (requireApiKey) so no JWT is needed.
+ * Returns a flat { status, redemptionHistory, qrId, ... } response.
  */
 export async function getQrPassDetails(qrId) {
   if (!MAIN_API_URL || !qrId) return null;
   const headers = {};
   if (MAIN_API_KEY) headers['x-api-key'] = MAIN_API_KEY;
   try {
-    const res = await fetch(`${MAIN_API_URL}/api/qr/${encodeURIComponent(qrId)}`, { headers });
+    const res = await fetch(`${MAIN_API_URL}/api/integration/qr/${encodeURIComponent(qrId)}`, { headers });
     if (!res.ok) return null;
     const data = await res.json();
     return data || null;

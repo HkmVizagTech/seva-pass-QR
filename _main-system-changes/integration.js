@@ -35,4 +35,7 @@ router.post("/preachers", requireApiKey, integrationController.createPreacher);
 router.get("/preachers", requireApiKey, integrationController.listPreachers);
 router.delete("/preachers/:id", requireApiKey, integrationController.deletePreacher);
 
+// QR pass details for integration partners (live status + scan history)
+router.get("/qr/:qrId", requireApiKey, integrationController.getQRDetails);
+
 module.exports = router;
