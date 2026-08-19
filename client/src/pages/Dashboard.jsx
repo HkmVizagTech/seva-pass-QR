@@ -142,7 +142,7 @@ export default function Dashboard() {
 
       <section className="panel">
         <div className="panel-head">
-          <h2>{isPreacher ? 'Recently issued under you' : 'Recently issued passes'}</h2>
+          <h2>{isMainSystem ? 'Recently issued under you' : 'Recently issued passes'}</h2>
           <Link to="/passes" className="btn btn-ghost btn-sm">View all</Link>
         </div>
         {recent.length === 0 ? (
@@ -154,7 +154,7 @@ export default function Dashboard() {
             <table className="table">
               <thead>
                 <tr>
-                  <th>{isPreacher ? 'Devotee' : 'Donor / Invitee'}</th>
+                  <th>{isMainSystem ? 'Devotee' : 'Donor / Invitee'}</th>
                   <th>Type</th>
                   <th>Event</th>
                   <th>Status</th>
@@ -163,13 +163,13 @@ export default function Dashboard() {
               </thead>
               <tbody>
                 {recent.map((p) => {
-                  const name = isPreacher ? (p.name || p.donor_name) : p.donor_name;
-                  const type = isPreacher ? p.catId?.name || p.catId?.catCode || '—' : p.pass_type;
-                  const event = isPreacher ? p.eventId?.name || p.eventId?.eventCode || '—' : p.event_name || '—';
-                  const status = isPreacher
+                  const name = isMainSystem ? (p.name || p.donor_name) : p.donor_name;
+                  const type = isMainSystem ? p.catId?.name || p.catId?.catCode || '—' : p.pass_type;
+                  const event = isMainSystem ? p.eventId?.name || p.eventId?.eventCode || '—' : p.event_name || '—';
+                  const status = isMainSystem
                     ? p.qrPass?.status || 'no pass'
                     : p.status;
-                  const phone = isPreacher ? p.phone : (p.phone || p.email || '');
+                  const phone = isMainSystem ? p.phone : (p.phone || p.email || '');
                   return (
                     <tr key={p.id || p._id}>
                       <td>
@@ -180,7 +180,7 @@ export default function Dashboard() {
                       <td>{event}</td>
                       <td>
                         <span className={`badge badge-${status}`}>{status}</span>
-                        {isPreacher && p.bahumanaReceived && (
+                        {isMainSystem && p.bahumanaReceived && (
                           <div className="sub" style={{ color: 'var(--green, #1a7f37)' }}>🎁 bahumana received</div>
                         )}
                       </td>
