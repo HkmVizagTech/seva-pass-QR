@@ -28,6 +28,9 @@ const passSchema = new mongoose.Schema(
     delivery_status: { type: String, enum: ['pending', 'sent', 'delivered', 'failed'], default: 'pending' },
     event_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Event', default: null, index: true },
     issued_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    // When admin issues a pass and assigns it to a preacher, store the preacher's
+    // user ID here so the preacher sees it in their filtered pass list.
+    preacher_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     checked_in_at: { type: Date, default: null },
     valid_from: { type: Date, default: null },
     valid_until: { type: Date, default: null },

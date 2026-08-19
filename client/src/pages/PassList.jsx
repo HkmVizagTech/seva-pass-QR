@@ -1,16 +1,142 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { api, downloadQrPng, shareWhatsApp, formatDateTime } from '../api.js';
 import {
   ListIcon,
   DownloadIcon,
   EyeIcon,
-  TicketIcon,
   WhatsAppIcon,
   CloseIcon,
 } from '../components/icons.jsx';
 
 const STATUS = ['', 'unused', 'used', 'revoked'];
+
+// Map main-system QRPass status to the local badge status.
+function displayStatus(pass) {
+  const raw = pass.live_status || pass.status || 'unused';
+  if (raw === 'active') return 'unused';
+  if (['used', 'revoked'].includes(raw)) return raw;
+  return 'unused';
+}
+
+// ─── Pass Detail Modal ──────────────────────────────────────────────────────
+function PassDetailModal({ passId, onClose }) {
+  const [pass, setPass] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!passId) return;
+    setLoading(true);
+    setError('');
+    api
+      .getPass(passId)
+      .then(({ pass }) => setPass(pass))
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [passId]);
+
+  return (
+    <div className="qr-modal-backdrop" onClick={onClose} onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }} tabIndex={-1} ref={(el) => { if (el) el.focus(); }}>
+      <div className="qr-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480, maxHeight: '85vh', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+          <b style={{ fontSize: '1rem' }}>Pass Details</b>
+          <button className="btn btn-ghost btn-sm" onClick={onClose}><CloseIcon size={15} /></button>
+        </div>
+
+        {loading ? (
+          <div className="loading">Loading…</div>
+        ) : error ? (
+          <div className="alert alert-error">{error}</div>
+        ) : pass ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {/* Status banner */}
+            <div style={{
+              padding: '10px 14px', borderRadius: 10, fontWeight: 600, fontSize: '0.9rem',
+              background: displayStatus(pass) === 'used' ? 'var(--green-bg)' : displayStatus(pass) === 'revoked' ? 'var(--red-bg)' : 'var(--cream)',
+              color: displayStatus(pass) === 'used' ? 'var(--green)' : displayStatus(pass) === 'revoked' ? 'var(--red)' : 'var(--text)',
+              display: 'flex', alignItems: 'center', gap: 6,
+            }}>
+              {displayStatus(pass) === 'used' ? '✅' : displayStatus(pass) === 'revoked' ? '🚫' : '🎫'}
+              {pass.live_status || pass.status}
+              {pass.live_status && pass.live_status !== pass.status && (
+                <span style={{ fontWeight: 400, fontSize: '0.75rem', opacity: 0.7 }}>(live)</span>
+              )}
+            </div>
+
+            {/* Info grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px', fontSize: '0.85rem' }}>
+              <div><span className="sub">Name</span><br /><b>{pass.donor_name}</b></div>
+              <div><span className="sub">Phone</span><br />{pass.phone || '—'}</div>
+              <div><span className="sub">Email</span><br />{pass.email || '—'}</div>
+              <div><span className="sub">Type</span><br />{pass.pass_type}</div>
+              <div><span className="sub">Event</span><br />{pass.event_name || '—'}</div>
+              <div><span className="sub">Source</span><br />{pass.source}</div>
+              <div><span className="sub">Issued by</span><br />{pass.issuer_name || '—'}</div>
+              <div><span className="sub">Issued on</span><br />{pass.created_at ? formatDateTime(pass.created_at) : '—'}</div>
+              {pass.qr_token && <div style={{ gridColumn: '1 / -1' }}><span className="sub">QR ID</span><br /><span style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{pass.qr_token}</span></div>}
+            </div>
+
+            {/* Delivery */}
+            {pass.delivery_status && pass.delivery_status !== 'pending' && (
+              <div style={{ fontSize: '0.85rem' }}>
+                <span className="sub">Delivery</span>{' '}
+                <span className={`badge ${pass.delivery_status === 'sent' || pass.delivery_status === 'delivered' ? 'badge-used' : 'badge-revoked'}`}>
+                  {pass.delivery_status}
+                </span>
+              </div>
+            )}
+
+            {/* Scan history */}
+            {pass.redemption_history && pass.redemption_history.length > 0 && (
+              <div>
+                <div style={{ fontWeight: 600, fontSize: '0.9rem', marginBottom: 8 }}>Scan History</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {pass.redemption_history.map((scan, i) => (
+                    <div key={i} style={{
+                      display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 12px',
+                      background: scan.result === 'granted' ? 'var(--green-bg)' : 'var(--red-bg)',
+                      borderRadius: 10, fontSize: '0.85rem',
+                    }}>
+                      <span style={{ fontSize: '1.1rem', flexShrink: 0 }}>
+                        {scan.result === 'granted' ? '✅' : '❌'}
+                      </span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600 }}>
+                          {scan.epId?.name || scan.stationLabel || 'Station'}
+                          <span style={{ fontWeight: 400, opacity: 0.7, marginLeft: 6 }}>
+                            ({scan.result})
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '0.78rem', opacity: 0.7 }}>
+                          {scan.scannedAt ? formatDateTime(scan.scannedAt) : '—'}
+                          {scan.scannedBy && <span> · by {scan.scannedBy}</span>}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* No scans yet */}
+            {(!pass.redemption_history || pass.redemption_history.length === 0) && (
+              <div className="sub" style={{ fontSize: '0.85rem', textAlign: 'center', padding: '8px 0' }}>
+                No scans recorded yet
+              </div>
+            )}
+
+            {/* QR preview */}
+            {(pass.qr_image || pass.qr_svg) && (
+              <div style={{ textAlign: 'center' }}>
+                <img src={pass.qr_image || pass.qr_svg} alt="QR" style={{ maxWidth: 180, borderRadius: 10 }} />
+              </div>
+            )}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
 
 // ─── Scan History Modal ─────────────────────────────────────────────────────
 function ScanHistoryModal({ holder, onClose }) {
@@ -344,7 +470,7 @@ function MyPasses() {
 }
 
 // ─── Admin view: all passes (unchanged behaviour) ────────────────────────────
-function AllPasses() {
+function AllPasses({ role }) {
   const [passes, setPasses] = useState([]);
   const [events, setEvents] = useState([]);
   const [q, setQ] = useState('');
@@ -352,6 +478,7 @@ function AllPasses() {
   const [eventId, setEventId] = useState('');
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState(null);
+  const [detailPass, setDetailPass] = useState(null); // pass ID for detail modal
 
   useEffect(() => {
     api
@@ -391,7 +518,7 @@ function AllPasses() {
         <div className="page-title">
           <span className="title-icon"><ListIcon size={22} /></span>
           <div>
-            <h1>All Passes</h1>
+            <h1>{role === 'preacher' ? 'My Passes' : 'All Passes'}</h1>
             <p>{passes.length} pass(es) shown</p>
           </div>
         </div>
@@ -432,6 +559,7 @@ function AllPasses() {
                   <th>Type</th>
                   <th>Event</th>
                   <th>Status</th>
+                  <th>Scans</th>
                   <th>Delivered</th>
                   <th>Issued by</th>
                   <th className="ta-r">Actions</th>
@@ -439,7 +567,7 @@ function AllPasses() {
               </thead>
               <tbody>
                 {passes.map((p) => (
-                  <tr key={p.id}>
+                  <tr key={p.id} style={{ cursor: 'pointer' }} onClick={() => setDetailPass(p.id)}>
                     <td>
                       {p.donor_name}
                       <div className="sub">
@@ -449,7 +577,24 @@ function AllPasses() {
                     </td>
                     <td>{p.pass_type}</td>
                     <td>{p.event_name || '—'}</td>
-                    <td><span className={`badge badge-${p.status}`}>{p.status}</span></td>
+                    <td><span className={`badge badge-${displayStatus(p)}`}>{displayStatus(p)}</span></td>
+                    <td>
+                      {p.redemption_history && p.redemption_history.length > 0 ? (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                          {p.redemption_history.filter((r) => r.result === 'granted').map((r, i) => (
+                            <span key={i} style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 3,
+                              padding: '2px 7px', borderRadius: 6, fontSize: '0.7rem', fontWeight: 600,
+                              background: 'var(--green-bg)', color: 'var(--green)',
+                            }}>
+                              ✅ {r.stationLabel || 'Station'}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="sub" style={{ fontSize: '0.78rem' }}>—</span>
+                      )}
+                    </td>
                     <td>
                       {p.delivery_status && p.delivery_status !== 'pending' ? (
                         <span className={`badge ${p.delivery_status === 'sent' || p.delivery_status === 'delivered' ? 'badge-used' : 'badge-revoked'}`}>
@@ -461,10 +606,10 @@ function AllPasses() {
                     </td>
                     <td>{p.issuer_name || '—'}</td>
                     <td className="ta-r">
-                      <div className="actions">
-                        <Link className="btn btn-ghost btn-sm" to={`/pass?t=${p.token}`}>
-                          <EyeIcon size={14} /> Card
-                        </Link>
+                      <div className="actions" onClick={(e) => e.stopPropagation()}>
+                        <button className="btn btn-ghost btn-sm" onClick={() => setDetailPass(p.id)}>
+                          <EyeIcon size={14} /> Details
+                        </button>
                         <button
                           className="btn btn-ghost btn-sm"
                           onClick={() => downloadQrPng(p.id, pngName(p))}
@@ -499,7 +644,7 @@ function AllPasses() {
           {/* Mobile cards */}
           <div className="pass-list-cards">
             {passes.map((p) => (
-              <div key={p.id} className="pass-item fade-up">
+              <div key={p.id} className="pass-item fade-up" style={{ cursor: 'pointer' }} onClick={() => setDetailPass(p.id)}>
                 <div className="pass-item-head">
                   <div>
                     <div className="pass-item-name">{p.donor_name}</div>
@@ -508,12 +653,27 @@ function AllPasses() {
                       {p.source === 'main-system' && <span className="badge badge-main">main system</span>}
                     </div>
                   </div>
-                  <span className={`badge badge-${p.status}`}>{p.status}</span>
+                  <span className={`badge badge-${displayStatus(p)}`}>{displayStatus(p)}</span>
                 </div>
 
                 <div className="pass-item-meta">
                   <div><b>Type</b>{p.pass_type}</div>
                   <div><b>Event</b>{p.event_name || '—'}</div>
+                  <div><b>Scans</b>
+                    {p.redemption_history && p.redemption_history.length > 0 ? (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 4 }}>
+                        {p.redemption_history.filter((r) => r.result === 'granted').map((r, i) => (
+                          <span key={i} style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 3,
+                            padding: '2px 7px', borderRadius: 6, fontSize: '0.7rem', fontWeight: 600,
+                            background: 'var(--green-bg)', color: 'var(--green)',
+                          }}>
+                            ✅ {r.stationLabel || 'Station'}
+                          </span>
+                        ))}
+                      </div>
+                    ) : '—'}
+                  </div>
                   <div><b>Delivered</b>
                     {p.delivery_status && p.delivery_status !== 'pending' ? (
                       <span className={`badge ${p.delivery_status === 'sent' || p.delivery_status === 'delivered' ? 'badge-used' : 'badge-revoked'}`}>
@@ -524,10 +684,10 @@ function AllPasses() {
                   <div><b>Issued by</b>{p.issuer_name || '—'}</div>
                 </div>
 
-                <div className="pass-item-actions">
-                  <Link className="btn btn-ghost btn-sm" to={`/pass?t=${p.token}`}>
-                    <TicketIcon size={14} /> Card
-                  </Link>
+                <div className="pass-item-actions" onClick={(e) => e.stopPropagation()}>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setDetailPass(p.id)}>
+                    <EyeIcon size={14} /> Details
+                  </button>
                   <button className="btn btn-ghost btn-sm" onClick={() => downloadQrPng(p.id, pngName(p))}>
                     <DownloadIcon size={14} /> PNG
                   </button>
@@ -550,6 +710,11 @@ function AllPasses() {
           </div>
         </>
       )}
+
+      {/* Pass detail modal */}
+      {detailPass && (
+        <PassDetailModal passId={detailPass} onClose={() => setDetailPass(null)} />
+      )}
     </div>
   );
 }
@@ -566,5 +731,5 @@ export default function PassList() {
 
   if (role === null) return <div className="loading">Loading…</div>;
 
-  return role === 'preacher' ? <MyPasses /> : <AllPasses />;
+  return <AllPasses role={role} />;
 }

@@ -307,3 +307,24 @@ export async function getQrPassDetails(qrId) {
     return null;
   }
 }
+
+/**
+ * Batch-fetch live QR pass status for multiple passes.
+ * Returns a Map of qrId → { status, redemptionHistory }.
+ * Silently ignores errors — enrichment is best-effort.
+ */
+export async function batchGetQrPassDetails(qrIds) {
+  if (!MAIN_API_URL || !qrIds.length) return new Map();
+  const results = new Map();
+  const CONCURRENCY = 10;
+  for (let i = 0; i < qrIds.length; i += CONCURRENCY) {
+    const batch = qrIds.slice(i, i + CONCURRENCY);
+    const settled = await Promise.allSettled(batch.map((id) => getQrPassDetails(id)));
+    settled.forEach((r, j) => {
+      if (r.status === 'fulfilled' && r.value) {
+        results.set(batch[j], r.value);
+      }
+    });
+  }
+  return results;
+}

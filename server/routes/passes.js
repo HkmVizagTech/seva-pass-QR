@@ -6,7 +6,7 @@ import Pass, { PASS_TYPES, PASS_STATUSES } from '../models/Pass.js';
 import Event from '../models/Event.js';
 import User from '../models/User.js';
 import { isWhatsAppConfigured, sendPassQrWhatsApp } from '../services/whatsapp.js';
-import { isMainSystemConfigured, claimQr, fetchCategories, fetchVenues, MainSystemError } from '../services/mainSystem.js';
+import { isMainSystemConfigured, claimQr, fetchCategories, fetchVenues, MainSystemError, getQrPassDetails, batchGetQrPassDetails } from '../services/mainSystem.js';
 
 const router = Router();
 
@@ -28,6 +28,8 @@ function serializePass(doc) {
     notes: doc.notes,
     qr_content: doc.qr_content,
     status: doc.status,
+    live_status: doc.live_status || null,
+    redemption_history: doc.redemption_history || [],
     delivery_status: doc.delivery_status || 'pending',
     source: doc.source || 'local',
     recipient_id: doc.recipient_id || null,
@@ -37,6 +39,7 @@ function serializePass(doc) {
     event_name: doc.event_id?.name || null,
     issued_by: doc.issued_by ? doc.issued_by._id?.toString() || doc.issued_by.toString() : null,
     issuer_name: doc.issued_by?.name || null,
+    preacher_id: doc.preacher_id ? doc.preacher_id._id?.toString() || doc.preacher_id.toString() : null,
     checked_in_at: doc.checked_in_at || null,
     valid_from: doc.valid_from || null,
     valid_until: doc.valid_until || null,
@@ -55,7 +58,7 @@ async function serializePassWithQr(doc, { includeImage = false } = {}) {
 }
 
 async function loadPassById(id) {
-  return Pass.findById(id).populate('event_id', 'name').populate('issued_by', 'name').lean();
+  return Pass.findById(id).populate('event_id', 'name').populate('issued_by', 'name').populate('preacher_id', 'name short_code').lean();
 }
 
 function escapeRegex(text) {
@@ -77,14 +80,43 @@ router.get('/', wrap(async (req, res) => {
     filter.event_id = event_id;
   }
 
+  // Non-admin users only see their own passes + passes assigned to them.
+  if (req.user.role !== 'admin') {
+    filter.$or = filter.$or || [];
+    filter.$or.push({ issued_by: req.user.id });
+    filter.$or.push({ preacher_id: req.user.id });
+    if (filter.$or.length === 0) delete filter.$or;
+  }
+
   const passes = await Pass.find(filter)
     .sort({ created_at: -1 })
     .limit(500)
     .populate('event_id', 'name')
     .populate('issued_by', 'name')
+    .populate('preacher_id', 'name short_code')
     .lean();
 
   const withQr = await Promise.all(passes.map((p) => serializePassWithQr(p)));
+
+  // Enrich with live status from the main system for main-system passes.
+  if (isMainSystemConfigured()) {
+    const qrIds = withQr.filter((p) => p.source === 'main-system' && p.qr_token).map((p) => p.qr_token);
+    if (qrIds.length) {
+      try {
+        const liveMap = await batchGetQrPassDetails(qrIds);
+        withQr.forEach((p) => {
+          const live = liveMap.get(p.qr_token);
+          if (live) {
+            p.live_status = live.status || null;
+            p.redemption_history = live.redemptionHistory || [];
+          }
+        });
+      } catch {
+        // Enrichment is best-effort; listing still works without it.
+      }
+    }
+  }
+
   res.json({ passes: withQr, pass_types: PASS_TYPES });
 }));
 
@@ -164,6 +196,8 @@ router.post('/', wrap(async (req, res) => {
     valid_from = '',
     valid_until = '',
     baseUrl = '',
+    // When admin issues a pass for a specific preacher, pass their user ID.
+    preacher_id = '',
   } = req.body || {};
 
   if (!donor_name) {
@@ -255,7 +289,9 @@ router.post('/', wrap(async (req, res) => {
       qr_token: qrToken,
       main_qr_image: mainQrImage,
       event_id: event_id || null,
-      issued_by: req.user.role === 'preacher' ? null : req.user.id,
+      issued_by: req.user.id,
+      // Admin can assign a pass to a specific preacher by user ID.
+      preacher_id: req.user.role === 'admin' && preacher_id && mongoose.isValidObjectId(preacher_id) ? preacher_id : null,
       valid_from: valid_from || null,
       valid_until: valid_until || null,
     });
@@ -294,7 +330,22 @@ router.get('/:id', wrap(async (req, res) => {
   if (!pass) {
     return res.status(404).json({ error: 'Pass not found' });
   }
-  res.json({ pass: await serializePassWithQr(pass, { includeImage: true }) });
+  const serialized = await serializePassWithQr(pass, { includeImage: true });
+
+  // Enrich with live status from the main system.
+  if (serialized.source === 'main-system' && serialized.qr_token && isMainSystemConfigured()) {
+    try {
+      const live = await getQrPassDetails(serialized.qr_token);
+      if (live) {
+        serialized.live_status = live.status || null;
+        serialized.redemption_history = live.redemptionHistory || [];
+      }
+    } catch {
+      // Best-effort enrichment.
+    }
+  }
+
+  res.json({ pass: serialized });
 }));
 
 // ---- Helper: only admins or the pass issuer can operate on a pass. ----
