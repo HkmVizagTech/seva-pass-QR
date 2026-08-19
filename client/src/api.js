@@ -166,6 +166,31 @@ export async function downloadQrPng(id, filename) {
   });
   if (!res.ok) throw new Error('Download failed');
   const blob = await res.blob();
+
+  // Capacitor / Android: save to cache and open the share sheet.
+  if (isNativeApp()) {
+    try {
+      const { Filesystem, Directory } = await import('@capacitor/filesystem');
+      const { Share } = await import('@capacitor/share');
+      const reader = new FileReader();
+      const base64 = await new Promise((resolve, reject) => {
+        reader.onload = () => resolve(reader.result.split(',')[1] || '');
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+      const writeResult = await Filesystem.writeFile({
+        path: filename,
+        data: base64,
+        directory: Directory.Cache,
+      });
+      await Share.share({ title: filename, files: [writeResult.uri] });
+      return;
+    } catch (e) {
+      console.warn('Native share failed, falling back:', e);
+    }
+  }
+
+  // Web: programmatic <a> click download.
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
