@@ -2,8 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { UsersIcon, PlusIcon, EditIcon, TrashIcon } from '../components/icons.jsx';
 
-const ROLES = ['admin', 'devotee'];
-const EMPTY = { username: '', password: '', name: '', role: 'devotee', quota: 30, short_code: '' };
+const ROLES = ['admin', 'devotee', 'preacher'];
+const EMPTY = { username: '', password: '', name: '', role: 'devotee', quota: 30, short_code: '', email: '', phone: '' };
 
 export default function Users() {
   const [users, setUsers] = useState([]);
@@ -38,7 +38,7 @@ export default function Users() {
     setLoading(true);
     try {
       await api.createUser(form);
-      setSuccess(`Devotee "${form.name}" created.`);
+      setSuccess(`${form.role === 'preacher' ? 'Preacher' : 'Devotee'} "${form.name}" created.`);
       setForm(EMPTY);
       load();
     } catch (err) {
@@ -88,13 +88,13 @@ export default function Users() {
     setEditForm((f) => ({ ...f, [key]: key === 'quota' ? Number(e.target.value) : e.target.value }));
 
   const deleteUser = async (u) => {
-    if (!window.confirm(`Delete devotee "${u.name}"? This cannot be undone.`)) return;
+    if (!window.confirm(`Delete "${u.name}"? This cannot be undone.`)) return;
     setError('');
     setSuccess('');
     setLoading(true);
     try {
       await api.deleteUser(u.id);
-      setSuccess(`Devotee "${u.name}" deleted.`);
+      setSuccess(`"${u.name}" deleted.`);
       load();
     } catch (err) {
       setError(err.message);
@@ -146,6 +146,18 @@ export default function Users() {
               />
               <span className="sub" style={{ fontSize: '0.75rem' }}>Passes issued by this devotee are attributed to this preacher.</span>
             </label>
+            {form.role === 'preacher' && (
+              <>
+                <label>
+                  Email (required for preachers)
+                  <input type="email" value={form.email} onChange={set('email')} placeholder="preacher@example.com" autoComplete="off" />
+                </label>
+                <label>
+                  Phone (optional, alternative to email)
+                  <input value={form.phone} onChange={set('phone')} placeholder="9876543210" autoComplete="off" />
+                </label>
+              </>
+            )}
             <div className="form-row">
               <label>
                 Role
@@ -321,20 +333,26 @@ export default function Users() {
                               <span className="sub">—</span>
                             )}
                           </td>
-                          <td><span className={`badge ${u.role === 'admin' ? 'badge-main' : ''}`}>{u.role}</span></td>
+                          <td><span className={`badge ${u.role === 'admin' ? 'badge-main' : u.role === 'preacher' ? 'badge-used' : ''}`}>{u.role}{u.main_system ? ' (main)' : ''}</span></td>
                           <td>
-                            {u.quota}
-                            {u.event_quotas && Object.keys(u.event_quotas).length > 0 && (
-                              <div className="sub" style={{ fontSize: '0.7rem', lineHeight: 1.4 }}>
-                                {Object.entries(u.event_quotas).map(([evId, info]) => {
-                                  const ev = events.find((e) => e.id === evId);
-                                  return (
-                                    <div key={evId}>
-                                      {ev?.name || evId}: {info.used}/{info.quota}
-                                    </div>
-                                  );
-                                })}
-                              </div>
+                            {u.role === 'preacher' ? (
+                              <span className="sub">N/A (main system)</span>
+                            ) : (
+                              <>
+                                {u.quota}
+                                {u.event_quotas && Object.keys(u.event_quotas).length > 0 && (
+                                  <div className="sub" style={{ fontSize: '0.7rem', lineHeight: 1.4 }}>
+                                    {Object.entries(u.event_quotas).map(([evId, info]) => {
+                                      const ev = events.find((e) => e.id === evId);
+                                      return (
+                                        <div key={evId}>
+                                          {ev?.name || evId}: {info.used}/{info.quota}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </>
                             )}
                           </td>
                           <td>
@@ -345,12 +363,19 @@ export default function Users() {
                           </td>
                           <td className="ta-r">
                             <div className="actions">
-                              <button className="btn btn-ghost btn-sm" onClick={() => startEdit(u)}>
-                                <EditIcon size={14} /> Edit
-                              </button>
-                              <button className="btn btn-ghost btn-sm" style={{ color: 'var(--red)' }} onClick={() => deleteUser(u)} aria-label={`Delete devotee ${u.name}`}>
-                                <TrashIcon size={14} />
-                              </button>
+                              {!u.main_system && (
+                                <button className="btn btn-ghost btn-sm" onClick={() => startEdit(u)}>
+                                  <EditIcon size={14} /> Edit
+                                </button>
+                              )}
+                              {!u.main_system && (
+                                <button className="btn btn-ghost btn-sm" style={{ color: 'var(--red)' }} onClick={() => deleteUser(u)} aria-label={`Delete ${u.name}`}>
+                                  <TrashIcon size={14} />
+                                </button>
+                              )}
+                              {u.main_system && (
+                                <span className="sub" style={{ fontSize: '0.75rem' }}>Managed on main site</span>
+                              )}
                             </div>
                           </td>
                         </>

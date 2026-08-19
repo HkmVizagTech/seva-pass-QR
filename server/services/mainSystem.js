@@ -234,3 +234,76 @@ export async function preacherGetHolders(token, params = {}) {
 export async function preacherGetStats(token) {
   return preacherAuthedRequest('/api/preachers/me/stats', token);
 }
+
+/**
+ * Fetch scan history for a specific holder from the main system.
+ * Returns the ScanLog records for that holder.
+ */
+export async function getHolderScanHistory(token, holderId) {
+  return preacherAuthedRequest(`/api/scan/holder/${holderId}/history`, token);
+}
+
+/**
+ * Create a preacher on the main system via the integration API.
+ * The app admin calls this to sync preacher accounts.
+ */
+export async function createMainPreacher({ name, email, phone, password, shortCode }) {
+  const data = await request('/api/integration/preachers', {
+    name,
+    email,
+    phone,
+    password,
+    shortCode,
+  });
+  return data;
+}
+
+/**
+ * List all preachers from the main system via the integration API.
+ */
+export async function listMainPreachers() {
+  return getRequest('/api/integration/preachers');
+}
+
+/**
+ * Delete (soft-delete) a preacher on the main system via the integration API.
+ */
+export async function deleteMainPreacher(id) {
+  if (!MAIN_API_URL) {
+    throw new MainSystemError('Main system is not configured. Set MAIN_SYSTEM_API_URL in server/.env', 503);
+  }
+  const headers = { 'Content-Type': 'application/json' };
+  if (MAIN_API_KEY) headers['x-api-key'] = MAIN_API_KEY;
+  let res;
+  try {
+    res = await fetch(`${MAIN_API_URL}/api/integration/preachers/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers,
+    });
+  } catch (err) {
+    throw new MainSystemError(`Main system unreachable (${err.message})`, 502);
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.status === false) {
+    throw new MainSystemError(data.message || data.error || `Main system request failed (${res.status})`, res.status || 502);
+  }
+  return data;
+}
+
+/**
+ * Fetch QR pass details (including redemptionHistory) from the main system.
+ * Used by the public pass card to show scan status.
+ */
+export async function getQrPassDetails(qrId) {
+  if (!MAIN_API_URL || !qrId) return null;
+  const headers = {};
+  if (MAIN_API_KEY) headers['x-api-key'] = MAIN_API_KEY;
+  try {
+    const res = await fetch(`${MAIN_API_URL}/api/qr/${encodeURIComponent(qrId)}`, { headers });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data || null;
+  } catch {
+    return null;
+  }
+}

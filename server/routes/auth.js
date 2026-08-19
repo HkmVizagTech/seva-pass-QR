@@ -5,7 +5,13 @@ import rateLimit from 'express-rate-limit';
 import User from '../models/User.js';
 import Pass from '../models/Pass.js';
 import { requireAuth, signToken, publicUser } from '../auth.js';
-import { preacherLogin, MainSystemError } from '../services/mainSystem.js';
+import {
+  preacherLogin,
+  MainSystemError,
+  createMainPreacher,
+  listMainPreachers,
+  deleteMainPreacher,
+} from '../services/mainSystem.js';
 
 const router = Router();
 
@@ -137,6 +143,35 @@ router.get('/users', requireAuth, wrap(async (req, res) => {
     };
   });
 
+  // Also fetch preachers from the main system and merge them into the list
+  let mainPreachers = [];
+  try {
+    mainPreachers = await listMainPreachers();
+    if (!Array.isArray(mainPreachers)) mainPreachers = [];
+  } catch {
+    // Main system might not be configured — that's fine
+  }
+
+  // Merge main system preachers that aren't already in local DB
+  const localShortCodes = new Set(users.map((u) => (u.short_code || '').toUpperCase()));
+  for (const p of mainPreachers) {
+    const code = (p.shortCode || '').toUpperCase();
+    if (code && !localShortCodes.has(code)) {
+      withUsage.push({
+        id: p._id || p.id || '',
+        username: code,
+        name: p.name || '',
+        role: 'preacher',
+        quota: 0,
+        event_quotas: {},
+        short_code: code,
+        created_at: p.createdAt || null,
+        used: 0,
+        main_system: true,
+      });
+    }
+  }
+
   res.json({ users: withUsage });
 }));
 
@@ -144,12 +179,12 @@ router.post('/users', requireAuth, wrap(async (req, res) => {
   if (req.user.role !== 'admin') {
     return res.status(403).json({ error: 'Admin access required' });
   }
-  const { username, password, name, role = 'devotee', quota, short_code } = req.body || {};
+  const { username, password, name, role = 'devotee', quota, short_code, email, phone } = req.body || {};
   if (!username || !password || !name) {
     return res.status(400).json({ error: 'username, password and name are required' });
   }
-  if (!['admin', 'devotee'].includes(role)) {
-    return res.status(400).json({ error: 'role must be admin or devotee' });
+  if (!['admin', 'devotee', 'preacher'].includes(role)) {
+    return res.status(400).json({ error: 'role must be admin, devotee or preacher' });
   }
   const exists = await User.findOne({ username: username.trim().toLowerCase() });
   if (exists) {
@@ -159,6 +194,31 @@ router.post('/users', requireAuth, wrap(async (req, res) => {
     return res.status(400).json({ error: 'quota must be a positive integer' });
   }
   const cleanCode = String(short_code || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+  // If creating a preacher, also create on the main system
+  if (role === 'preacher') {
+    if (!cleanCode) {
+      return res.status(400).json({ error: 'short_code is required for preachers' });
+    }
+    if (!email && !phone) {
+      return res.status(400).json({ error: 'email or phone is required for preachers' });
+    }
+    try {
+      await createMainPreacher({
+        name: name.trim(),
+        email: email || undefined,
+        phone: phone || undefined,
+        password,
+        shortCode: cleanCode,
+      });
+    } catch (err) {
+      if (err instanceof MainSystemError) {
+        return res.status(err.status || 502).json({ error: `Main system: ${err.message}` });
+      }
+      throw err;
+    }
+  }
+
   const hash = bcrypt.hashSync(password, 10);
   const user = await User.create({
     username: username.trim(),
@@ -190,7 +250,7 @@ router.put('/users/:id', requireAuth, wrap(async (req, res) => {
     user.name = String(name).trim();
   }
   if (role !== undefined) {
-    if (!['admin', 'devotee'].includes(role)) return res.status(400).json({ error: 'role must be admin or devotee' });
+    if (!['admin', 'devotee', 'preacher'].includes(role)) return res.status(400).json({ error: 'role must be admin, devotee or preacher' });
     user.role = role;
   }
   if (quota !== undefined) {
@@ -243,6 +303,16 @@ router.delete('/users/:id', requireAuth, wrap(async (req, res) => {
       return res.status(400).json({ error: 'Cannot delete the last admin account' });
     }
   }
+
+  // If deleting a preacher, also soft-delete on the main system
+  if (user.role === 'preacher' && user.short_code) {
+    try {
+      await deleteMainPreacher(user.short_code);
+    } catch {
+      // Main system might not have this preacher — continue with local delete
+    }
+  }
+
   await User.findByIdAndDelete(req.params.id);
   res.json({ ok: true });
 }));

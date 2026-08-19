@@ -2,6 +2,7 @@ import { Router } from 'express';
 import QRCode from 'qrcode';
 import Pass from '../models/Pass.js';
 import Event from '../models/Event.js';
+import { getQrPassDetails } from '../services/mainSystem.js';
 
 const router = Router();
 
@@ -15,6 +16,19 @@ router.get('/passes/:token', wrap(async (req, res) => {
   }
 
   const event = pass.event_id || {};
+
+  // For main-system passes, fetch scan status (redemption history)
+  let scanStatus = null;
+  if (pass.qr_token && pass.source === 'main-system') {
+    try {
+      const qrDetails = await getQrPassDetails(pass.qr_token);
+      if (qrDetails && qrDetails.redemptionHistory) {
+        scanStatus = qrDetails.redemptionHistory;
+      }
+    } catch {
+      // Ignore — scan status is non-critical
+    }
+  }
 
   res.json({
     pass: {
@@ -34,6 +48,8 @@ router.get('/passes/:token', wrap(async (req, res) => {
       qr_svg: `data:image/svg+xml;utf8,${encodeURIComponent(
         await QRCode.toString(pass.qr_content, { type: 'svg', margin: 1, width: 200 })
       )}`,
+      // Scan status from the main system
+      scan_status: scanStatus,
     },
   });
 }));

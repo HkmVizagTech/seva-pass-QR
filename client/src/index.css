@@ -1108,6 +1108,39 @@ input:-webkit-autofill:focus {
   color: var(--muted);
 }
 
+.login-tabs {
+  display: flex;
+  gap: 4px;
+  background: var(--cream-100);
+  border-radius: 12px;
+  padding: 4px;
+  margin-bottom: 18px;
+}
+
+.login-tab {
+  flex: 1;
+  padding: 9px 8px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+
+.login-tab:hover {
+  color: var(--ink-soft);
+}
+
+.login-tab.active {
+  background: #fff;
+  color: var(--krishna-800);
+  box-shadow: var(--shadow-sm);
+}
+
 /* ---------- Public pass card ---------- */
 .public-page {
   min-height: 100vh;
@@ -1292,6 +1325,76 @@ input:-webkit-autofill:focus {
 
 .public-footer .btn {
   margin-top: 12px;
+}
+
+/* ---------- Scan progress (public pass card) ---------- */
+.scan-progress {
+  margin-top: 16px;
+  padding: 14px;
+  background: var(--cream-100);
+  border-radius: 12px;
+  border: 1px solid var(--border);
+}
+
+.scan-progress-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--krishna-800);
+  margin-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.scan-progress-items {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.scan-progress-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 0.82rem;
+}
+
+.scan-progress-item.scanned {
+  background: var(--green-bg);
+}
+
+.scan-icon {
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.scan-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.scan-station {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.scan-time {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.scan-bahumana-badge {
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: var(--green-bg);
+  border: 1px solid var(--green);
+  border-radius: 8px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--green);
+  text-align: center;
 }
 
 /* ---------- Entry-point selection chips ---------- */

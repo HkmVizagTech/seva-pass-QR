@@ -3,7 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { api, setToken } from '../api.js';
 
 export default function Login() {
+  const [mode, setMode] = useState('preacher');
   const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -14,14 +16,37 @@ export default function Login() {
     setError('');
     setLoading(true);
     try {
-      const { token } = await api.login(username.trim(), password);
-      setToken(token);
+      if (mode === 'preacher') {
+        const loginEmail = email.trim();
+        if (!loginEmail) {
+          setError('Email is required');
+          setLoading(false);
+          return;
+        }
+        const { token } = await api.preacherLogin({ email: loginEmail, password });
+        setToken(token);
+      } else {
+        const loginUsername = username.trim();
+        if (!loginUsername) {
+          setError('Username is required');
+          setLoading(false);
+          return;
+        }
+        const { token } = await api.login(loginUsername, password);
+        setToken(token);
+      }
       navigate('/');
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
+  };
+
+  const switchMode = (newMode) => {
+    setMode(newMode);
+    setError('');
+    setPassword('');
   };
 
   return (
@@ -36,18 +61,50 @@ export default function Login() {
           </div>
         </div>
 
+        <div className="login-tabs">
+          <button
+            className={`login-tab ${mode === 'preacher' ? 'active' : ''}`}
+            onClick={() => switchMode('preacher')}
+            type="button"
+          >
+            Preacher Login
+          </button>
+          <button
+            className={`login-tab ${mode === 'admin' ? 'active' : ''}`}
+            onClick={() => switchMode('admin')}
+            type="button"
+          >
+            Admin Login
+          </button>
+        </div>
+
         <form onSubmit={submit} className="form">
-          <label>
-            Username
-            <input
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              autoComplete="username"
-              required
-              autoFocus
-              placeholder="Enter your username"
-            />
-          </label>
+          {mode === 'admin' ? (
+            <label>
+              Username
+              <input
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                autoComplete="username"
+                required
+                autoFocus
+                placeholder="Enter your username"
+              />
+            </label>
+          ) : (
+            <label>
+              Email
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="email"
+                required
+                autoFocus
+                placeholder="Enter your email"
+              />
+            </label>
+          )}
           <label>
             Password
             <input
@@ -66,7 +123,7 @@ export default function Login() {
         </form>
         {import.meta.env.DEV && (
           <p className="login-hint">
-            Default login: <code>admin</code> / <code>admin123</code>
+            Admin: <code>admin</code> / <code>admin123</code> · Preacher: email + password from main system
           </p>
         )}
       </div>

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { requireAuth } from '../auth.js';
-import { preacherGetHolders, preacherGetStats, getMainApiUrl } from '../services/mainSystem.js';
+import { preacherGetHolders, preacherGetStats, getMainApiUrl, getHolderScanHistory } from '../services/mainSystem.js';
 
 const router = Router();
 
@@ -36,6 +36,12 @@ router.get('/me/holders', requireAuth, requirePreacher, wrap(async (req, res) =>
 // GET /api/preachers/me/stats — totals + per-event breakdown for the preacher.
 router.get('/me/stats', requireAuth, requirePreacher, wrap(async (req, res) => {
   const data = await preacherGetStats(req.user.main_token);
+  res.json(data);
+}));
+
+// GET /api/preachers/me/holders/:holderId/scan-history — full scan log for a holder.
+router.get('/me/holders/:holderId/scan-history', requireAuth, requirePreacher, wrap(async (req, res) => {
+  const data = await getHolderScanHistory(req.user.main_token, req.params.holderId);
   res.json(data);
 }));
 

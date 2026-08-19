@@ -137,6 +137,8 @@ export const api = {
   // Preacher-scoped views (main system, proxied).
   myHolders: (params) => request('/api/preachers/me/holders' + qs(params)),
   myStats: () => request('/api/preachers/me/stats'),
+  // Scan history for a specific holder (main system, proxied).
+  holderScanHistory: (holderId) => request(`/api/preachers/me/holders/${encodeURIComponent(holderId)}/scan-history`),
   // Returns a blob object URL for a holder's QR image (main system, proxied).
   holderQrImage: async (qrId) => {
     const res = await fetch(`${apiBase()}/api/preachers/qr/${encodeURIComponent(qrId)}/image`, {

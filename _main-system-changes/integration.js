@@ -30,4 +30,9 @@ router.post("/generate-volunteer-qr", requireApiKey, integrationController.gener
 router.post("/prasadam/qr", requireApiKey, prasadamController.issueSingle);
 router.post("/prasadam/qr/bulk", requireApiKey, prasadamController.issueBulk);
 
+// Preacher management via integration API
+router.post("/preachers", requireApiKey, integrationController.createPreacher);
+router.get("/preachers", requireApiKey, integrationController.listPreachers);
+router.delete("/preachers/:id", requireApiKey, integrationController.deletePreacher);
+
 module.exports = router;

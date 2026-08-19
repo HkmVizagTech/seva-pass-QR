@@ -12,6 +12,97 @@ import {
 
 const STATUS = ['', 'unused', 'used', 'revoked'];
 
+// ─── Scan History Modal ─────────────────────────────────────────────────────
+function ScanHistoryModal({ holder, onClose }) {
+  const [history, setHistory] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!holder?._id) return;
+    setLoading(true);
+    api
+      .holderScanHistory(holder._id)
+      .then((data) => setHistory(data.history || []))
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [holder?._id]);
+
+  return (
+    <div className="qr-modal-backdrop" onClick={onClose} onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }} tabIndex={-1} ref={(el) => { if (el) el.focus(); }}>
+      <div className="qr-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440, maxHeight: '80vh', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <b>Scan History — {holder.name}</b>
+          <button className="btn btn-ghost btn-sm" onClick={onClose}><CloseIcon size={15} /></button>
+        </div>
+
+        {loading ? (
+          <div className="loading">Loading…</div>
+        ) : error ? (
+          <div className="alert alert-error">{error}</div>
+        ) : !history || history.length === 0 ? (
+          <p className="muted">No scans recorded yet.</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {history.map((scan, i) => (
+              <div key={i} style={{
+                display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 12px',
+                background: scan.result === 'granted' ? 'var(--green-bg)' : 'var(--red-bg)',
+                borderRadius: 10, fontSize: '0.85rem',
+              }}>
+                <span style={{ fontSize: '1.1rem', flexShrink: 0 }}>
+                  {scan.result === 'granted' ? '✅' : '❌'}
+                </span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600 }}>
+                    {scan.epId?.name || scan.stationLabel || 'Station'}
+                    <span style={{ fontWeight: 400, opacity: 0.7, marginLeft: 6 }}>
+                      ({scan.result})
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '0.78rem', opacity: 0.7 }}>
+                    {scan.scannedAt ? formatDateTime(scan.scannedAt) : '—'}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Station Status Badge ───────────────────────────────────────────────────
+function StationStatus({ redemptionHistory }) {
+  if (!redemptionHistory || redemptionHistory.length === 0) {
+    return <span style={{ opacity: 0.45, fontSize: '0.78rem' }}>No scans</span>;
+  }
+  const granted = redemptionHistory.filter((r) => r.result === 'granted');
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+      {granted.map((r, i) => (
+        <span key={i} style={{
+          display: 'inline-flex', alignItems: 'center', gap: 3,
+          padding: '2px 7px', borderRadius: 6, fontSize: '0.7rem', fontWeight: 600,
+          background: 'var(--green-bg)', color: 'var(--green)',
+        }}>
+          ✅ {r.stationLabel || 'Station'}
+        </span>
+      ))}
+      {redemptionHistory.filter((r) => r.result !== 'granted').map((r, i) => (
+        <span key={`f-${i}`} style={{
+          display: 'inline-flex', alignItems: 'center', gap: 3,
+          padding: '2px 7px', borderRadius: 6, fontSize: '0.7rem', fontWeight: 500,
+          background: 'var(--red-bg)', color: 'var(--red)', opacity: 0.7,
+        }}>
+          ❌ {r.stationLabel || 'Station'}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 // ─── Preacher view: their own holders from the main system ───────────────────
 function MyPasses() {
   const [holders, setHolders] = useState([]);
@@ -26,6 +117,7 @@ function MyPasses() {
   const [loading, setLoading] = useState(true);
   const [qrModal, setQrModal] = useState(null); // { qrId, name }
   const [qrUrl, setQrUrl] = useState('');
+  const [scanModal, setScanModal] = useState(null); // holder object
 
   useEffect(() => {
     api
@@ -134,8 +226,8 @@ function MyPasses() {
                   <th>Category</th>
                   <th>Event</th>
                   <th>Pass</th>
+                  <th>Scan Status</th>
                   <th>Bahumana</th>
-                  <th>Delivered</th>
                   <th className="ta-r">Actions</th>
                 </tr>
               </thead>
@@ -151,13 +243,20 @@ function MyPasses() {
                     <td>
                       <span className={`badge badge-${h.qrPass?.status || 'none'}`}>{h.qrPass?.status || 'no pass'}</span>
                     </td>
+                    <td>
+                      <StationStatus redemptionHistory={h.qrPass?.redemptionHistory} />
+                    </td>
                     <td>{bahumanaLabel(h)}</td>
-                    <td>{h.qrPass?.delivery_status || '—'}</td>
                     <td className="ta-r">
                       <div className="actions">
                         {h.qrPass?.qrId && (
                           <button className="btn btn-ghost btn-sm" onClick={() => openQr(h)}>
                             <EyeIcon size={14} /> QR
+                          </button>
+                        )}
+                        {h._id && (
+                          <button className="btn btn-ghost btn-sm" onClick={() => setScanModal(h)}>
+                            📋 History
                           </button>
                         )}
                       </div>
@@ -182,16 +281,21 @@ function MyPasses() {
                 <div className="pass-item-meta">
                   <div><b>Category</b>{h.catId?.name || '—'}{h.catId?.catCode ? ` (${h.catId.catCode})` : ''}</div>
                   <div><b>Event</b>{h.eventId?.name || '—'}</div>
+                  <div><b>Scans</b><StationStatus redemptionHistory={h.qrPass?.redemptionHistory} /></div>
                   <div><b>Bahumana</b>{bahumanaLabel(h)}</div>
-                  <div><b>Delivered</b>{h.qrPass?.delivery_status || '—'}</div>
                 </div>
-                {h.qrPass?.qrId && (
-                  <div className="pass-item-actions">
+                <div className="pass-item-actions">
+                  {h.qrPass?.qrId && (
                     <button className="btn btn-ghost btn-sm" onClick={() => openQr(h)}>
                       <EyeIcon size={14} /> View QR
                     </button>
-                  </div>
-                )}
+                  )}
+                  {h._id && (
+                    <button className="btn btn-ghost btn-sm" onClick={() => setScanModal(h)}>
+                      📋 History
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -229,6 +333,11 @@ function MyPasses() {
             )}
           </div>
         </div>
+      )}
+
+      {/* Scan history modal */}
+      {scanModal && (
+        <ScanHistoryModal holder={scanModal} onClose={() => setScanModal(null)} />
       )}
     </div>
   );

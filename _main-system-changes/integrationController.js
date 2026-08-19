@@ -313,3 +313,107 @@ exports.generateVolunteerQR = async (req, res) => {
 exports.status = (req, res) => {
   res.json({ status: true, message: "ISKCON Seva Pass API is operational", timestamp: new Date().toISOString() });
 };
+
+// ─── Preacher management via integration API ─────────────────────────────────
+// These endpoints allow the third-party Seva Pass app to create, list, and
+// delete preachers on the main system using the integration API key.
+
+const User = require("../models/User");
+
+/**
+ * POST /api/integration/preachers
+ * Create a preacher on the main system.
+ * Body: { name, email?, phone?, password, shortCode }
+ */
+exports.createPreacher = async (req, res) => {
+  try {
+    const { name, email, phone, password, shortCode } = req.body;
+
+    if (!name || !password || !shortCode) {
+      return res.status(400).json({ status: false, message: "name, password, and shortCode are required" });
+    }
+    if (!email && !phone) {
+      return res.status(400).json({ status: false, message: "email or phone is required" });
+    }
+
+    const cleanCode = String(shortCode).trim().toUpperCase();
+    if (cleanCode.length < 2 || cleanCode.length > 10 || !/^[A-Z0-9]+$/.test(cleanCode)) {
+      return res.status(400).json({ status: false, message: "shortCode must be 2-10 alphanumeric characters" });
+    }
+
+    // Check uniqueness
+    const existingCode = await User.findOne({ shortCode: cleanCode });
+    if (existingCode) {
+      return res.status(409).json({ status: false, message: `Short code "${cleanCode}" already exists` });
+    }
+    if (email) {
+      const existingEmail = await User.findOne({ email: String(email).trim().toLowerCase() });
+      if (existingEmail) {
+        return res.status(409).json({ status: false, message: "Email already exists" });
+      }
+    }
+
+    const preacher = await User.create({
+      name: name.trim(),
+      email: email ? String(email).trim().toLowerCase() : undefined,
+      phone: phone ? String(phone).trim() : undefined,
+      password,
+      shortCode: cleanCode,
+      role: "preacher",
+      isActive: true,
+    });
+
+    return res.status(201).json({
+      status: true,
+      message: "Preacher created",
+      preacher: { id: preacher._id, name: preacher.name, shortCode: preacher.shortCode },
+    });
+  } catch (error) {
+    console.error("[Integration] createPreacher error:", error);
+    return res.status(500).json({ status: false, message: "Failed to create preacher" });
+  }
+};
+
+/**
+ * GET /api/integration/preachers
+ * List all active preachers.
+ */
+exports.listPreachers = async (req, res) => {
+  try {
+    const preachers = await User.find({ role: "preacher" })
+      .select("name email phone shortCode isActive createdAt")
+      .sort({ createdAt: -1 })
+      .lean();
+    return res.json(preachers);
+  } catch (error) {
+    console.error("[Integration] listPreachers error:", error);
+    return res.status(500).json({ status: false, message: "Failed to list preachers" });
+  }
+};
+
+/**
+ * DELETE /api/integration/preachers/:id
+ * Soft-delete a preacher (set isActive: false).
+ * :id can be the MongoDB _id or the shortCode.
+ */
+exports.deletePreacher = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const filter = /^[0-9a-fA-F]{24}$/.test(id)
+      ? { _id: id }
+      : { shortCode: String(id).toUpperCase() };
+
+    const preacher = await User.findOneAndUpdate(
+      { ...filter, role: "preacher" },
+      { isActive: false },
+      { new: true }
+    );
+    if (!preacher) {
+      return res.status(404).json({ status: false, message: "Preacher not found" });
+    }
+    return res.json({ status: true, message: "Preacher deactivated" });
+  } catch (error) {
+    console.error("[Integration] deletePreacher error:", error);
+    return res.status(500).json({ status: false, message: "Failed to delete preacher" });
+  }
+};

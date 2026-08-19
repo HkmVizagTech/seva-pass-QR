@@ -1,11 +1,43 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { api, parseDate } from '../api.js';
+import { api, parseDate, formatDateTime } from '../api.js';
 import { PrintIcon, CheckIcon, ShieldIcon } from '../components/icons.jsx';
 
 function fmt(value) {
   const d = parseDate(value);
   return d ? d.toLocaleDateString() : '—';
+}
+
+function ScanProgress({ scanStatus }) {
+  if (!scanStatus || scanStatus.length === 0) return null;
+
+  const granted = scanStatus.filter((s) => s.result === 'granted');
+  const hasBahumana = granted.some((s) => {
+    const label = (s.stationLabel || '').toLowerCase();
+    return label.includes('bahumana');
+  });
+
+  return (
+    <div className="scan-progress">
+      <div className="scan-progress-title">Pass Scan Status</div>
+      <div className="scan-progress-items">
+        {granted.map((s, i) => (
+          <div key={i} className="scan-progress-item scanned">
+            <span className="scan-icon">✅</span>
+            <div className="scan-info">
+              <span className="scan-station">{s.stationLabel || 'Station'}</span>
+              <span className="scan-time">{s.scannedAt ? formatDateTime(s.scannedAt) : ''}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+      {hasBahumana && (
+        <div className="scan-bahumana-badge">
+          🎉 Prasadam received by devotee
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function PublicPass() {
@@ -35,7 +67,7 @@ export default function PublicPass() {
           ← Back
         </button>
         <button className="btn btn-ghost btn-sm" onClick={() => navigate('/')} style={{ color: '#fff' }}>
-          🏠 Home
+          Home
         </button>
       </div>
 
@@ -86,6 +118,8 @@ export default function PublicPass() {
           <div className="public-qr">
             <img src={pass.qr_image || pass.qr_svg} alt="Pass QR code" />
           </div>
+
+          <ScanProgress scanStatus={pass.scan_status} />
 
           <div className="public-footer">
             <div className="public-qr-hint">Show this pass QR at the gate for validation</div>
