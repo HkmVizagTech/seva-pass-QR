@@ -66,10 +66,10 @@ export default function IssuePass() {
   }, [form.event_id, events]);
 
   // Fetch the pass types (categories) available for the selected event, so the
-  // devotee picks from the event's real types instead of a static list. Defaults
-  // to the "Invitee" type when the event has one (the app's main use case),
-  // else General, else the first type. Falls back to the static list if the
-  // main system is unreachable or the event has no code.
+  // devotee picks from the event's real types instead of a static list. The main
+  // system may restrict which categories are visible per event via
+  // devoteeAppCategories. When only one category is available (Invitee), the
+  // dropdown is hidden and the category is auto-selected.
   useEffect(() => {
     if (!form.event_id) {
       setCategories([]);
@@ -87,17 +87,24 @@ export default function IssuePass() {
         if (cancelled) return;
         setCategories(categories || []);
         setForm((f) => {
-          // Only auto-select when the devotee hasn't picked a type yet.
-          if (f.pass_type) return f;
           const list = categories || [];
-          const invitee = list.find(
-            (c) => /invitee/i.test(c.name || '') || (c.catCode || '').toUpperCase() === 'INV'
-          );
-          const general = list.find(
-            (c) => /general/i.test(c.name || '') || (c.catCode || '').toUpperCase() === 'GN'
-          );
-          const pick = invitee || general || list[0];
-          return pick ? { ...f, pass_type: pick.name } : f;
+          if (list.length === 0) return f;
+          // If only one category is available, auto-select it.
+          if (list.length === 1) {
+            return { ...f, pass_type: list[0].name };
+          }
+          // Multiple categories: auto-select Invitee if present and no pick yet.
+          if (!f.pass_type) {
+            const invitee = list.find(
+              (c) => /invitee/i.test(c.name || '') || (c.catCode || '').toUpperCase() === 'INV'
+            );
+            const general = list.find(
+              (c) => /general/i.test(c.name || '') || (c.catCode || '').toUpperCase() === 'GN'
+            );
+            const pick = invitee || general || list[0];
+            return pick ? { ...f, pass_type: pick.name } : f;
+          }
+          return f;
         });
       })
       .catch(() => {
@@ -271,16 +278,40 @@ export default function IssuePass() {
                 Email (optional)
                 <input type="email" inputMode="email" value={form.email} onChange={set('email')} placeholder="devotee@example.com" />
               </label>
-              <label>
-                Pass type
-                <select value={form.pass_type} onChange={set('pass_type')}>
-                  {(categories.length > 0 ? categories : PASS_TYPES.map((t) => ({ name: t }))).map((c) => (
-                    <option key={c.name} value={c.name}>
-                      {c.catCode ? `${c.name} (${c.catCode})` : c.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              {categories.length > 1 ? (
+                <label>
+                  Pass type
+                  <select value={form.pass_type} onChange={set('pass_type')}>
+                    {categories.map((c) => {
+                      const hasLimit = c.limit != null;
+                      const exhausted = hasLimit && c.remaining !== null && c.remaining <= 0;
+                      const label = c.catCode ? `${c.name} (${c.catCode})` : c.name;
+                      const suffix = hasLimit
+                        ? c.remaining != null && c.remaining <= 0
+                          ? ' — Full'
+                          : ` — ${c.remaining} left`
+                        : '';
+                      return (
+                        <option key={c.name} value={c.name} disabled={exhausted}>
+                          {label}{suffix}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </label>
+              ) : categories.length === 1 ? (
+                <label>
+                  Pass type
+                  <input value={categories[0].catCode ? `${categories[0].name} (${categories[0].catCode})` : categories[0].name} disabled style={{ opacity: 0.7 }} />
+                </label>
+              ) : (
+                <label>
+                  Pass type
+                  <select value={form.pass_type} onChange={set('pass_type')}>
+                    {PASS_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </label>
+              )}
             </div>
 
             {venues.length > 0 && (

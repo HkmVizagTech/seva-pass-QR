@@ -26,6 +26,7 @@ router.get("/status", integrationController.status);
 router.get("/events", requireApiKey, integrationController.getAllEvents);
 router.get("/events/:eventCode/venues", requireApiKey, integrationController.getEventVenues);
 router.get("/events/:eventCode/entry-points", requireApiKey, integrationController.getEventEntryPoints);
+router.get("/events/:eventCode/categories", requireApiKey, integrationController.getEventCategories);
 router.post("/generate-volunteer-qr", requireApiKey, integrationController.generateVolunteerQR);
 router.post("/prasadam/qr", requireApiKey, prasadamController.issueSingle);
 router.post("/prasadam/qr/bulk", requireApiKey, prasadamController.issueBulk);
