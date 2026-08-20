@@ -27,6 +27,7 @@ router.get("/events", requireApiKey, integrationController.getAllEvents);
 router.get("/events/:eventCode/venues", requireApiKey, integrationController.getEventVenues);
 router.get("/events/:eventCode/entry-points", requireApiKey, integrationController.getEventEntryPoints);
 router.get("/events/:eventCode/categories", requireApiKey, integrationController.getEventCategories);
+router.patch("/events/:eventCode/devotee-categories", requireApiKey, integrationController.updateDevoteeCategories);
 router.post("/generate-volunteer-qr", requireApiKey, integrationController.generateVolunteerQR);
 router.post("/prasadam/qr", requireApiKey, prasadamController.issueSingle);
 router.post("/prasadam/qr/bulk", requireApiKey, prasadamController.issueBulk);
@@ -38,5 +39,14 @@ router.delete("/preachers/:id", requireApiKey, integrationController.deletePreac
 
 // QR pass details for integration partners (live status + scan history)
 router.get("/qr/:qrId", requireApiKey, integrationController.getQRDetails);
+
+// ── Holder type + category management ──────────────────────────────────────
+// These let the main site's admin UI manage categories within holder types.
+// GET  /api/integration/holder-types/:eventCode
+//   → Returns all holder types for an event with their associated categories.
+// PATCH /api/integration/holder-types/:eventCode/:holderTypeId/categories
+//   → Update categories for a specific holder type (create/update/unlink).
+router.get("/holder-types/:eventCode", requireApiKey, integrationController.getHolderTypes);
+router.patch("/holder-types/:eventCode/:holderTypeId/categories", requireApiKey, integrationController.updateHolderTypeCategories);
 
 module.exports = router;
