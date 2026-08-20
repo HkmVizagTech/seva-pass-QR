@@ -4,16 +4,20 @@ import { UsersIcon, PlusIcon, EditIcon, TrashIcon } from '../components/icons.js
 
 const ROLES = ['admin', 'devotee'];
 const EMPTY = { username: '', password: '', name: '', role: 'devotee', quota: 30, short_code: '', email: '', phone: '' };
+const EMPTY_EDIT = { name: '', role: 'devotee', quota: 30, short_code: '', password: '', event_quotas: {} };
 
 export default function Users() {
   const [users, setUsers] = useState([]);
   const [events, setEvents] = useState([]);
+  const [currentUser, setCurrentUser] = useState(null);
   const [form, setForm] = useState(EMPTY);
   const [editing, setEditing] = useState(null);
   const [editForm, setEditForm] = useState(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
+  const [addEventId, setAddEventId] = useState('');
+  const [addEventQuota, setAddEventQuota] = useState(30);
 
   const load = () => {
     setError('');
@@ -25,6 +29,7 @@ export default function Users() {
 
   useEffect(load, []);
   useEffect(() => {
+    api.me().then(({ user }) => setCurrentUser(user)).catch(() => {});
     api.events().then(({ events }) => setEvents(events || [])).catch(() => {});
   }, []);
 
@@ -88,6 +93,10 @@ export default function Users() {
     setEditForm((f) => ({ ...f, [key]: key === 'quota' ? Number(e.target.value) : e.target.value }));
 
   const deleteUser = async (u) => {
+    if (currentUser && u.id === currentUser.id) {
+      setError('Cannot delete your own account.');
+      return;
+    }
     if (!window.confirm(`Delete "${u.name}"? This cannot be undone.`)) return;
     setError('');
     setSuccess('');
@@ -273,9 +282,9 @@ export default function Users() {
                                 <div className="form-row" style={{ alignItems: 'end', gap: 6, marginTop: 6 }}>
                                   <select
                                     className="input"
-                                    id="add-event-quota"
                                     style={{ flex: 1 }}
-                                    defaultValue=""
+                                    value={addEventId}
+                                    onChange={(e) => setAddEventId(e.target.value)}
                                   >
                                     <option value="">Add event quota…</option>
                                     {events
@@ -290,22 +299,20 @@ export default function Users() {
                                     inputMode="numeric"
                                     style={{ width: 80 }}
                                     placeholder="Quota"
-                                    id="event-quota-val"
-                                    defaultValue={30}
+                                    value={addEventQuota}
+                                    onChange={(e) => setAddEventQuota(Number(e.target.value) || 30)}
                                   />
                                   <button
                                     type="button"
                                     className="btn btn-ghost btn-sm"
                                     onClick={() => {
-                                      const sel = document.getElementById('add-event-quota');
-                                      const val = document.getElementById('event-quota-val');
-                                      if (sel?.value && val?.value) {
+                                      if (addEventId) {
                                         setEditForm((f) => ({
                                           ...f,
-                                          event_quotas: { ...f.event_quotas, [sel.value]: Number(val.value) || 1 },
+                                          event_quotas: { ...f.event_quotas, [addEventId]: addEventQuota || 1 },
                                         }));
-                                        sel.value = '';
-                                        val.value = 30;
+                                        setAddEventId('');
+                                        setAddEventQuota(30);
                                       }
                                     }}
                                   >

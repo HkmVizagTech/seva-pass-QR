@@ -37,6 +37,7 @@ function PassDetailModal({ passId, onClose }) {
   const [pass, setPass] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [revoking, setRevoking] = useState(false);
 
   useEffect(() => {
     if (!passId) return;
@@ -55,6 +56,20 @@ function PassDetailModal({ passId, onClose }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  const handleRevoke = async () => {
+    if (!window.confirm('Revoke this pass? The devotee will no longer be able to use it.')) return;
+    setRevoking(true);
+    try {
+      await api.revoke(passId);
+      const { pass: updated } = await api.getPass(passId);
+      setPass(updated);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setRevoking(false);
+    }
+  };
+
   return (
     <div className="qr-modal-backdrop" onClick={onClose}>
       <div className="qr-modal" onClick={(e) => e.stopPropagation()}>
@@ -72,12 +87,24 @@ function PassDetailModal({ passId, onClose }) {
               padding: '10px 14px', borderRadius: 10, fontWeight: 600, fontSize: '0.9rem',
               background: displayStatus(pass) === 'used' ? 'var(--green-bg)' : displayStatus(pass) === 'revoked' ? 'var(--red-bg)' : 'var(--cream)',
               color: displayStatus(pass) === 'used' ? 'var(--green)' : displayStatus(pass) === 'revoked' ? 'var(--red)' : 'var(--text)',
-              display: 'flex', alignItems: 'center', gap: 6,
+              display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'space-between',
             }}>
-              {displayStatus(pass) === 'used' ? '✅' : displayStatus(pass) === 'revoked' ? '🚫' : '🎫'}
-              {pass.live_status || pass.status}
-              {pass.live_status && pass.live_status !== pass.status && (
-                <span style={{ fontWeight: 400, fontSize: '0.75rem', opacity: 0.7 }}>(live)</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                {displayStatus(pass) === 'used' ? '✅' : displayStatus(pass) === 'revoked' ? '🚫' : '🎫'}
+                {pass.live_status || pass.status}
+                {pass.live_status && pass.live_status !== pass.status && (
+                  <span style={{ fontWeight: 400, fontSize: '0.75rem', opacity: 0.7 }}>(live)</span>
+                )}
+              </span>
+              {displayStatus(pass) === 'unused' && (
+                <button
+                  className="btn btn-ghost btn-sm"
+                  style={{ color: 'var(--red)', fontSize: '0.8rem', padding: '2px 8px' }}
+                  onClick={handleRevoke}
+                  disabled={revoking}
+                >
+                  {revoking ? 'Revoking…' : 'Revoke'}
+                </button>
               )}
             </div>
 
@@ -582,5 +609,5 @@ export default function PassList() {
 
   if (role === null) return <div className="loading">Loading…</div>;
 
-  return <AllPasses role={role} />;
+  return role === 'devotee' ? <MyPasses /> : <AllPasses role={role} />;
 }

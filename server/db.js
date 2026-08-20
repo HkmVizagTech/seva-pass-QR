@@ -59,5 +59,5 @@ export async function seedAdmin() {
   if (count > 0) return;
   const hash = bcrypt.hashSync('admin123', 10);
   await User.create({ username: 'admin', password_hash: hash, name: 'Administrator', role: 'admin' });
-  console.log('Seeded default user -> username: admin / password: admin123');
+  console.log('Seeded default admin user. Change the password immediately.');
 }

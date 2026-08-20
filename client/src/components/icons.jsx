@@ -125,26 +125,12 @@ export const ExternalIcon = (p) => (
   </Icon>
 );
 
-export const SearchIcon = (p) => (
-  <Icon {...p}>
-    <circle cx="11" cy="11" r="8" />
-    <line x1="21" y1="21" x2="16.65" y2="16.65" />
-  </Icon>
-);
-
 export const TicketIcon = (p) => (
   <Icon {...p}>
     <path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z" />
     <path d="M13 5v2" />
     <path d="M13 17v2" />
     <path d="M13 11v2" />
-  </Icon>
-);
-
-export const ClockIcon = (p) => (
-  <Icon {...p}>
-    <circle cx="12" cy="12" r="10" />
-    <polyline points="12 6 12 12 16 14" />
   </Icon>
 );
 
@@ -169,32 +155,9 @@ export const RefreshIcon = (p) => (
   </Icon>
 );
 
-export const HomeIcon = (p) => (
-  <Icon {...p}>
-    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-    <polyline points="9 22 9 12 15 12 15 22" />
-  </Icon>
-);
-
 export const ShieldIcon = (p) => (
   <Icon {...p}>
     <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-  </Icon>
-);
-
-export const FeatherIcon = (p) => (
-  <Icon {...p}>
-    <path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z" />
-    <line x1="16" y1="8" x2="2" y2="22" />
-    <line x1="17.5" y1="15" x2="9" y2="15" />
-  </Icon>
-);
-
-export const MusicIcon = (p) => (
-  <Icon {...p}>
-    <path d="M9 18V5l12-2v13" />
-    <circle cx="6" cy="18" r="3" />
-    <circle cx="18" cy="16" r="3" />
   </Icon>
 );
 

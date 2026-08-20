@@ -146,7 +146,7 @@ export default function Events() {
     api
       .me()
       .then(({ user }) => setIsAdmin(user.role === 'admin'))
-      .catch(() => {});
+      .catch(() => setIsAdmin(false));
   }, []);
 
   const submit = async (e) => {
@@ -170,8 +170,10 @@ export default function Events() {
     try {
       const { synced, events: syncedEvents } = await api.syncEvents();
       setSyncResult(`Synced ${synced} event(s) from main system`);
-      if (syncedEvents.length > 0) {
+      if (Array.isArray(syncedEvents) && syncedEvents.length > 0) {
         setEvents(syncedEvents);
+      } else {
+        load();
       }
     } catch (err) {
       setError(err.message);

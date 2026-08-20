@@ -47,12 +47,18 @@ export default function Dashboard() {
           api
             .myHolders({ limit: 8 })
             .then(({ holders }) => setRecent(holders || []))
+            .catch((e) => console.warn('Failed to load holders:', e.message));
+          api
+            .myStats()
+            .then((data) => {
+              if (data && data.stats) setStats(data.stats);
+            })
             .catch(() => {});
         } else {
           api
             .passes()
             .then(({ passes }) => setRecent((passes || []).slice(0, 8)))
-            .catch(() => {});
+            .catch((e) => console.warn('Failed to load passes:', e.message));
         }
       })
       .catch(() => {});

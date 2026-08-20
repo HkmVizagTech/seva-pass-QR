@@ -3,6 +3,7 @@ dist/
 server/data/
 .env
 .env.local
+.env.android
 .vercel/
 *.log
 .DS_Store

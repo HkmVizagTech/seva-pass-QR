@@ -337,8 +337,8 @@ export default function IssuePass() {
               </div>
             )}
 
-            <button className="btn btn-primary btn-block" disabled={loading}>
-              {loading ? 'Getting QR pass…' : 'Get QR pass'}
+            <button className="btn btn-primary btn-block" disabled={loading || (quota && quota.used >= quota.limit)}>
+              {loading ? 'Getting QR pass…' : quota && quota.used >= quota.limit ? 'Quota reached' : 'Get QR pass'}
             </button>
           </form>
         </section>

@@ -1,6 +1,10 @@
 import jwt from 'jsonwebtoken';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'seva-pass-dev-secret-change-me';
+if (!process.env.JWT_SECRET) {
+  console.error('FATAL: JWT_SECRET environment variable is not set. Refusing to start without a secure secret.');
+  process.exit(1);
+}
+const JWT_SECRET = process.env.JWT_SECRET;
 const TOKEN_TTL = '7d';
 
 export function signToken(user, extra = {}) {

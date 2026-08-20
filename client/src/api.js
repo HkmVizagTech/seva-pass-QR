@@ -44,10 +44,6 @@ function siteBase() {
   return siteBaseCache;
 }
 
-export function apiOrigin() {
-  return apiBase() || window.location.origin;
-}
-
 export function siteOrigin() {
   return siteBase() || window.location.origin;
 }
@@ -159,8 +155,6 @@ export const api = {
   categories: (eventCode) => request('/api/passes/categories' + qs({ event_code: eventCode })),
 
   publicPass: (token) => request(`/api/public/passes/${token}`),
-
-  testMainSystem: () => request('/api/passes/test-main-system'),
 };
 
 export async function downloadQrPng(id, filename) {
@@ -282,9 +276,4 @@ export function parseDate(value) {
 export function formatDateTime(value) {
   const d = parseDate(value);
   return d ? d.toLocaleString() : '—';
-}
-
-export function formatDate(value) {
-  const d = parseDate(value);
-  return d ? d.toLocaleDateString() : '—';
 }

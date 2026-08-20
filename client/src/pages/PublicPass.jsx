@@ -45,17 +45,20 @@ export default function PublicPass() {
   const token = params.get('t') || '';
   const [pass, setPass] = useState(null);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
     if (!token) {
       setError('No pass code provided. Please scan the full QR code.');
+      setLoading(false);
       return;
     }
     api
       .publicPass(token)
       .then(({ pass }) => setPass(pass))
-      .catch((e) => setError(e.message));
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
   }, [token]);
 
   const print = () => window.print();
@@ -71,6 +74,12 @@ export default function PublicPass() {
         </button>
       </div>
 
+      {loading && (
+        <div className="public-card fade-up" style={{ textAlign: 'center', padding: '40px 20px' }}>
+          <div className="loading">Loading pass…</div>
+        </div>
+      )}
+
       {error && (
         <div className="public-card error-card fade-up">
           <div className="public-status">🙏</div>
@@ -78,7 +87,7 @@ export default function PublicPass() {
         </div>
       )}
 
-      {pass && (
+      {!loading && pass && (
         <div className="public-card fade-up">
           <div className="public-top">
             <span className="brand-logo large">ॐ</span>
