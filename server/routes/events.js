@@ -167,7 +167,7 @@ router.get('/:id/categories', wrap(async (req, res) => {
   if (!event.event_code) {
     return res.json({ categories: [] });
   }
-  const categories = await fetchCategories(event.event_code);
+  const categories = await fetchCategories(event.event_code, { all: true });
   res.json({ categories });
 }));
 

@@ -3,6 +3,8 @@
 //   POST /api/integration/generate-volunteer-qr
 //   GET  /api/integration/events/:eventCode/entry-points
 //   GET  /api/integration/events/:eventCode/venues
+//   GET  /api/integration/events/:eventCode/categories
+//   PATCH /api/integration/events/:eventCode/devotee-categories
 //
 // When someone marks interest on their platform, they call this endpoint.
 // We create/find the holder in our system and return the QR code.
@@ -145,8 +147,280 @@ exports.getEventEntryPoints = async (req, res) => {
 };
 
 /**
- * POST /api/integration/generate-volunteer-qr
+ * GET /api/integration/events/:eventCode/categories
  *
+ * Returns all categories (pass types) for an event, enriched with
+ * usage counts and remaining quotas. Used by the Seva Pass app's
+ * IssuePass form so devotees pick from the event's real types
+ * (e.g. Invitee, Sponsor, General Public) instead of a static list.
+ *
+ * When devoteeAppCategories is set on the event, only those categories
+ * are returned (filtered list). Otherwise all categories are returned.
+ *
+ * Response: [{ _id, name, catCode, limit, used, remaining, entryPoints }]
+ */
+exports.getEventCategories = async (req, res) => {
+  try {
+    const event = await findEvent(req.params.eventCode);
+    if (!event) {
+      return res.status(404).json({ status: false, message: "Event not found" });
+    }
+
+    // Fetch all categories for this event
+    let categories = await Category.find({ eventId: event._id })
+      .populate("entryPoints", "name stationLabel")
+      .sort({ catCode: 1 })
+      .lean();
+
+    // If the event has devoteeAppCategories configured, filter to only those.
+    // Pass ?all=true to bypass this filter (used by the admin ConfigureModal).
+    const bypassFilter = req.query.all === 'true' || req.query.all === '1';
+    if (!bypassFilter) {
+      const allowedCodes = event.devoteeAppCategories;
+      if (Array.isArray(allowedCodes) && allowedCodes.length > 0) {
+        const allowedSet = new Set(allowedCodes.map((c) => String(c).toUpperCase()));
+        categories = categories.filter((c) => allowedSet.has(String(c.catCode).toUpperCase()));
+      }
+    }
+
+    // Count active QR passes per category so the app can show remaining quota
+    const catIds = categories.map((c) => c._id);
+    const passCounts = await QRPass.aggregate([
+      { $match: { eventId: event._id, catId: { $in: catIds }, status: "active" } },
+      { $group: { _id: "$catId", count: { $sum: 1 } } },
+    ]);
+    const countMap = new Map(passCounts.map((r) => [String(r._id), r.count]));
+
+    const enriched = categories.map((c) => {
+      const used = countMap.get(String(c._id)) || 0;
+      const limit = c.limit != null ? c.limit : null;
+      return {
+        _id: c._id,
+        name: c.name,
+        catCode: c.catCode,
+        limit,
+        used,
+        remaining: limit != null ? Math.max(0, limit - used) : null,
+        entryPoints: c.entryPoints || [],
+      };
+    });
+
+    res.json(enriched);
+  } catch (error) {
+    console.error("[Integration] getEventCategories error:", error);
+    res.status(500).json({ status: false, message: "Failed to fetch categories" });
+  }
+};
+
+/**
+ * PATCH /api/integration/events/:eventCode/devotee-categories
+ *
+ * Update which categories the devotee app may use for an event.
+ * Body: { categories: [{ catCode, name, limit }] | null }
+ *
+ * When categories is null, clears the restriction (all categories are allowed).
+ * When categories is an array, only those catCodes are enabled for devotees.
+ */
+exports.updateDevoteeCategories = async (req, res) => {
+  try {
+    const event = await findEvent(req.params.eventCode);
+    if (!event) {
+      return res.status(404).json({ status: false, message: "Event not found" });
+    }
+
+    const { categories } = req.body || {};
+
+    if (categories === null) {
+      // Clear restriction — allow all categories
+      event.devoteeAppCategories = [];
+    } else if (Array.isArray(categories)) {
+      // Set allowed categories
+      event.devoteeAppCategories = categories.map((c) => c.catCode || c.name).filter(Boolean);
+
+      // Update limits on the Category documents themselves
+      for (const cat of categories) {
+        if (cat.limit != null && cat.catCode) {
+          await Category.findOneAndUpdate(
+            { eventId: event._id, catCode: cat.catCode },
+            { $set: { limit: cat.limit } },
+          );
+        }
+      }
+    }
+
+    await event.save();
+
+    res.json({
+      status: true,
+      message: "Devotee categories updated",
+      devoteeAppCategories: event.devoteeAppCategories || [],
+    });
+  } catch (error) {
+    console.error("[Integration] updateDevoteeCategories error:", error);
+    res.status(500).json({ status: false, message: "Failed to update devotee categories" });
+  }
+};
+
+/**
+ * GET /api/integration/holder-types/:eventCode
+ *
+ * Returns all holder types for an event, with their associated categories.
+ * Used by the main site's admin UI to let admins manage categories
+ * within a holder type.
+ *
+ * Response: [{ _id, name, code, isDefault, isActive, categories: [{ _id, name, catCode, limit, used, remaining }] }]
+ */
+exports.getHolderTypes = async (req, res) => {
+  try {
+    const event = await findEvent(req.params.eventCode);
+    if (!event) {
+      return res.status(404).json({ status: false, message: "Event not found" });
+    }
+
+    const holderTypes = await HolderType.find({ eventId: event._id })
+      .sort({ name: 1 })
+      .lean();
+
+    // Fetch all categories for this event so we can attach them
+    const allCategories = await Category.find({ eventId: event._id })
+      .populate("entryPoints", "name stationLabel")
+      .sort({ catCode: 1 })
+      .lean();
+
+    // Count active QR passes per category
+    const catIds = allCategories.map((c) => c._id);
+    const passCounts = await QRPass.aggregate([
+      { $match: { eventId: event._id, catId: { $in: catIds }, status: "active" } },
+      { $group: { _id: "$catId", count: { $sum: 1 } } },
+    ]);
+    const countMap = new Map(passCounts.map((r) => [String(r._id), r.count]));
+
+    // Build enriched categories
+    const enrichedCategories = allCategories.map((c) => {
+      const used = countMap.get(String(c._id)) || 0;
+      const limit = c.limit != null ? c.limit : null;
+      return {
+        _id: c._id,
+        name: c.name,
+        catCode: c.catCode,
+        limit,
+        used,
+        remaining: limit != null ? Math.max(0, limit - used) : null,
+        entryPoints: c.entryPoints || [],
+        holderTypeId: c.holderTypeId || null,
+      };
+    });
+
+    // Attach categories to their holder types
+    const result = holderTypes.map((ht) => {
+      const associated = enrichedCategories.filter(
+        (c) => String(c.holderTypeId) === String(ht._id)
+      );
+      return {
+        ...ht,
+        categories: associated,
+      };
+    });
+
+    res.json(result);
+  } catch (error) {
+    console.error("[Integration] getHolderTypes error:", error);
+    res.status(500).json({ status: false, message: "Failed to fetch holder types" });
+  }
+};
+
+/**
+ * PATCH /api/integration/holder-types/:eventCode/:holderTypeId/categories
+ *
+ * Update the categories associated with a specific holder type.
+ * Body: { categories: [{ catCode, name, limit }] }
+ *
+ * Creates new categories if they don't exist, updates limits on existing ones,
+ * and links/unlinks them to the holder type.
+ */
+exports.updateHolderTypeCategories = async (req, res) => {
+  try {
+    const event = await findEvent(req.params.eventCode);
+    if (!event) {
+      return res.status(404).json({ status: false, message: "Event not found" });
+    }
+
+    const holderType = await HolderType.findOne({
+      _id: req.params.holderTypeId,
+      eventId: event._id,
+    });
+    if (!holderType) {
+      return res.status(404).json({ status: false, message: "Holder type not found" });
+    }
+
+    const { categories } = req.body || {};
+    if (!Array.isArray(categories)) {
+      return res.status(400).json({ status: false, message: "categories must be an array" });
+    }
+
+    // Upsert each category and link to this holder type
+    const results = [];
+    for (const cat of categories) {
+      if (!cat.catCode || !cat.name) continue;
+
+      const update = {
+        name: cat.name,
+        holderTypeId: holderType._id,
+        eventId: event._id,
+      };
+      if (cat.limit != null && cat.limit !== '') {
+        update.limit = Number(cat.limit);
+      } else {
+        update.limit = null;
+      }
+      if (cat.entryPoints) {
+        update.entryPoints = cat.entryPoints;
+      }
+
+      const doc = await Category.findOneAndUpdate(
+        { eventId: event._id, catCode: cat.catCode.toUpperCase() },
+        { $set: update },
+        { upsert: true, new: true },
+      );
+      results.push({
+        _id: doc._id,
+        name: doc.name,
+        catCode: doc.catCode,
+        limit: doc.limit,
+        holderTypeId: doc.holderTypeId,
+      });
+    }
+
+    // Unlink categories that were removed (categories in this holder type
+    // but not in the submitted list)
+    const submittedCodes = new Set(categories.map((c) => c.catCode?.toUpperCase()).filter(Boolean));
+    await Category.updateMany(
+      {
+        eventId: event._id,
+        holderTypeId: holderType._id,
+        catCode: { $nin: Array.from(submittedCodes) },
+      },
+      { $set: { holderTypeId: null } },
+    );
+
+    res.json({
+      status: true,
+      message: `Categories updated for holder type "${holderType.name}"`,
+      holderType: {
+        _id: holderType._id,
+        name: holderType.name,
+        code: holderType.code,
+      },
+      categories: results,
+    });
+  } catch (error) {
+    console.error("[Integration] updateHolderTypeCategories error:", error);
+    res.status(500).json({ status: false, message: "Failed to update holder type categories" });
+  }
+};
+
+/**
+ * POST /api/integration/generate-volunteer-qr
  * Request body:
  *   { event_id, user_phone_number, user_email?, venue? }
  *

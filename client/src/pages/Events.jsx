@@ -168,13 +168,9 @@ export default function Events() {
     setSyncResult('');
     setError('');
     try {
-      const { synced, events: syncedEvents } = await api.syncEvents();
+      const { synced } = await api.syncEvents();
       setSyncResult(`Synced ${synced} event(s) from main system`);
-      if (Array.isArray(syncedEvents) && syncedEvents.length > 0) {
-        setEvents(syncedEvents);
-      } else {
-        load();
-      }
+      load();
     } catch (err) {
       setError(err.message);
     } finally {

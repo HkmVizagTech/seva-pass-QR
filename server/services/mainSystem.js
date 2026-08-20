@@ -110,10 +110,11 @@ export async function fetchEvents(opts = {}) {
  * Fetch categories (pass types) for an event from the main system.
  * Returns an array of { _id, name, catCode, entryPoints }, or empty array.
  */
-export async function fetchCategories(eventCode) {
+export async function fetchCategories(eventCode, { all = false } = {}) {
   if (!eventCode || !MAIN_API_URL) return [];
   try {
-    const data = await getRequest(`/api/integration/events/${encodeURIComponent(eventCode)}/categories`);
+    const q = all ? '?all=true' : '';
+    const data = await getRequest(`/api/integration/events/${encodeURIComponent(eventCode)}/categories${q}`);
     return Array.isArray(data) ? data : [];
   } catch {
     return [];
