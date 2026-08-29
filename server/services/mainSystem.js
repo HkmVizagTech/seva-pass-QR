@@ -8,13 +8,16 @@
  * (HkmVizagTech/iskcon-scanner) validates it.
  *
  * Contract (main system):
- *   POST /api/integration/generate-volunteer-qr
+ *   POST /api/integration/seva-pass/issue
  *     header:  x-api-key: <INTEGRATION_API_KEY>
- *     body:    { event_id, user_phone_number, user_email?, venue? }
+ *     body:    { event_id, user_phone_number, user_email?, name?, venue?, category?, preacher?, preacherId? }
  *     → 200:   { status: true, message, qr_code: <base64 PNG data URL>, qr_id }
  *     → error: { status: false, message } (4xx/xx)
  *   event_id is matched against the main system's Event.eventCode (or _id).
  *   If venue is provided, entry points for the pass are filtered by location.building.
+ *   NOTE: The old /generate-volunteer-qr endpoint now expects a bulk format
+ *   (holders array) and is used by other systems. The Seva Pass app uses
+ *   /seva-pass/issue which accepts the flat single-holder format.
  *
  *   GET /api/integration/events
  *     → 200:   [{ _id, name, eventCode, dateStart, dateEnd, venue[], ... }]
@@ -173,7 +176,7 @@ export async function claimQr({ phone, name, email, eventCode, venue, category, 
   if (preacherId) {
     body.preacherId = preacherId;
   }
-  const data = await request('/api/integration/generate-volunteer-qr', body);
+  const data = await request('/api/integration/seva-pass/issue', body);
   return {
     qrId: data.qr_id || '',
     qrImage: data.qr_code || '',

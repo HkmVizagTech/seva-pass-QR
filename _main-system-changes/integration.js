@@ -29,6 +29,13 @@ router.get("/events/:eventCode/entry-points", requireApiKey, integrationControll
 router.get("/events/:eventCode/categories", requireApiKey, integrationController.getEventCategories);
 router.patch("/events/:eventCode/devotee-categories", requireApiKey, integrationController.updateDevoteeCategories);
 router.post("/generate-volunteer-qr", requireApiKey, integrationController.generateVolunteerQR);
+
+// ─── Seva Pass app — dedicated single-holder QR endpoint ───────────────────
+// POST /api/integration/seva-pass/issue
+// Accepts the Seva Pass app's flat format and issues a single QR pass.
+// This endpoint is专用 for the devotee-facing Seva Pass app and does NOT
+// interfere with /generate-volunteer-qr used by other consumers.
+router.post("/seva-pass/issue", requireApiKey, integrationController.sevaPassIssue);
 router.post("/prasadam/qr", requireApiKey, prasadamController.issueSingle);
 router.post("/prasadam/qr/bulk", requireApiKey, prasadamController.issueBulk);
 

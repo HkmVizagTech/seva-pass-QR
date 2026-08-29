@@ -736,3 +736,168 @@ exports.deletePreacher = async (req, res) => {
     return res.status(500).json({ status: false, message: "Failed to delete preacher" });
   }
 };
+
+// ─── Seva Pass app — dedicated single-holder QR endpoint ───────────────────
+// POST /api/integration/seva-pass/issue
+//
+// This endpoint is专用 for the Seva Pass app (devotee-facing).
+// It accepts the app's flat format and issues a single QR pass.
+// The existing /generate-volunteer-qr is left untouched for other consumers.
+//
+// Request body:
+//   { event_id, user_phone_number, user_email?, name?, venue?, category?,
+//     preacher?, preacherId? }
+// Response:
+//   { status: true, message, qr_code: <base64 PNG data URL>, qr_id }
+
+exports.sevaPassIssue = async (req, res) => {
+  try {
+    const {
+      event_id, user_phone_number, user_email, venue,
+      category: categoryParam, name: holderName, preacher, preacherId,
+    } = req.body;
+
+    if (!event_id) {
+      return res.status(400).json({ status: false, message: "event_id is required" });
+    }
+    if (!user_phone_number) {
+      return res.status(400).json({ status: false, message: "user_phone_number is required" });
+    }
+
+    const phone = normalisePhone(String(user_phone_number));
+    if (!phone) {
+      return res.status(400).json({ status: false, message: "Invalid phone number" });
+    }
+
+    const event = await findEvent(event_id);
+    if (!event) {
+      return res.status(404).json({ status: false, message: `Event not found for event_id: ${event_id}` });
+    }
+
+    // ── Check if holder already has an active pass ──────────────────────────
+    const existingHolder = await Holder.findOne({ eventId: event._id, phone });
+    if (existingHolder) {
+      const existingPass = await QRPass.findOne({ holderId: existingHolder._id, status: "active" });
+      if (existingPass) {
+        const existingCategory = await Category.findById(existingPass.catId).populate("entryPoints").lean();
+        const entryPoints = await resolveEntryPoints(event, existingCategory || null, venue);
+        const payload = qrService.createPayload(
+          { ...existingHolder.toObject(), qrId: existingPass.qrId },
+          event, existingCategory, entryPoints,
+        );
+        const { image: qrImage } = await qrService.generateQRCode(payload);
+        await trySendWhatsApp(phone, qrImage, existingHolder, event, entryPoints);
+        return res.json({
+          status: true,
+          message: "QR code already exists — returning existing pass",
+          qr_code: qrImage,
+          qr_id: existingPass.qrId,
+        });
+      }
+    }
+
+    // ── Resolve category: prefer the one sent by the Seva Pass app ─────────
+    let category = null;
+    if (categoryParam && categoryParam.trim()) {
+      const term = categoryParam.trim();
+      category = await Category.findOne({
+        eventId: event._id,
+        $or: [
+          { name: new RegExp("^" + term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$", "i") },
+          { catCode: term.toUpperCase() },
+        ],
+      }).populate("entryPoints");
+    }
+    if (!category) {
+      category = await Category.findOne({
+        eventId: event._id,
+        $or: [{ catCode: "GN" }, { name: /general/i }, { name: /volunteer/i }],
+      }).populate("entryPoints");
+    }
+
+    if (!category) {
+      return res.status(400).json({
+        status: false,
+        message: "No suitable category found for this event. Please configure a General Public or Volunteer category.",
+      });
+    }
+
+    // ── Resolve entry points (filtered by venue if provided) ────────────────
+    const entryPoints = await resolveEntryPoints(event, category, venue);
+
+    // ── Create or update holder ─────────────────────────────────────────────
+    let holderTypeId = null;
+    let holderTypeLabel = "self";
+    try {
+      const typeName = (process.env.INTEGRATION_HOLDER_TYPE || "invitee").trim();
+      let holderType = await HolderType.findOne({
+        eventId: event._id, isActive: true,
+        $or: [{ code: typeName.toUpperCase() }, { name: new RegExp("^" + typeName + "$", "i") }],
+      });
+      if (!holderType) {
+        holderType = await HolderType.findOne({ eventId: event._id, isDefault: true, isActive: true });
+      }
+      if (holderType) { holderTypeId = holderType._id; holderTypeLabel = holderType.name; }
+    } catch (e) {
+      console.warn("[SevaPass] holder type lookup failed:", e.message);
+    }
+
+    const resolvedName = (holderName && holderName.trim())
+      ? holderName.trim()
+      : (user_email ? user_email.split("@")[0] : `Devotee ${phone.slice(-4)}`);
+
+    const holderData = {
+      eventId: event._id, catId: category._id, phone,
+      email: user_email || undefined,
+      name: resolvedName,
+      holderType: holderTypeLabel, holderTypeId,
+      source: "third_party",
+      issuedBy: preacherId || null,
+      ...(preacher ? { thirdPartyAttribution: preacher } : {}),
+    };
+
+    let holder;
+    try {
+      holder = await Holder.create(holderData);
+    } catch (e) {
+      if (e.code === 11000) {
+        holder = await Holder.findOne({ eventId: event._id, phone });
+        if (!holder) throw e;
+        if (resolvedName && holder.name !== resolvedName) {
+          holder.name = resolvedName;
+          if (preacher) holder.thirdPartyAttribution = preacher;
+          if (preacherId) holder.issuedBy = preacherId;
+          await holder.save();
+        }
+      } else { throw e; }
+    }
+
+    // ── Generate QR pass ────────────────────────────────────────────────────
+    const qrId = await qrService.generateQRId(event.eventCode, category.catCode);
+    const payload = qrService.createPayload(
+      { ...holder.toObject(), qrId }, event, category, entryPoints,
+    );
+    const { image: qrImage, signedPayload } = await qrService.generateQRCode(payload);
+
+    await QRPass.create({
+      qrId, holderId: holder._id, eventId: event._id, catId: category._id,
+      entryPoints: entryPoints.map((ep) => ep._id),
+      payloadSigned: signedPayload,
+      validFrom: event.dateStart, validUntil: event.dateEnd,
+      deliveryMethod: "third_party", deliveryStatus: "sent", deliveredAt: new Date(),
+    });
+
+    const venueLabel = venue ? ` at ${venue}` : "";
+    console.log(`[SevaPass] QR generated for ${phone} (${resolvedName}) at event ${event.eventCode} [${category.catCode}]${venueLabel}`);
+
+    await trySendWhatsApp(phone, qrImage, holder, event, entryPoints);
+
+    return res.status(200).json({
+      status: true, message: "QR code generated successfully",
+      qr_code: qrImage, qr_id: qrId,
+    });
+  } catch (error) {
+    console.error("[SevaPass] sevaPassIssue error:", error);
+    return res.status(500).json({ status: false, message: "Failed to generate QR code" });
+  }
+};

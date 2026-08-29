@@ -89,7 +89,7 @@ function startMainStub() {
             success: true,
             token: 'stub-preacher-token',
             preacher: {
-              id: 'preacher_1',
+              id: '6650a0b0c1d2e3f4a5b6c7d8',
               name: 'Mukunda Gauranga Dasa',
               shortCode: 'MKGD',
               role: 'preacher',
@@ -171,7 +171,9 @@ function startMainStub() {
           ]);
         }
 
-        if (req.url !== '/api/integration/generate-volunteer-qr' || req.method !== 'POST') {
+        const isGenerateQR = req.url === '/api/integration/generate-volunteer-qr';
+        const isSevaPassIssue = req.url === '/api/integration/seva-pass/issue';
+        if ((!isGenerateQR && !isSevaPassIssue) || req.method !== 'POST') {
           return send(404, { status: false, message: 'Not found' });
         }
         let parsed;
@@ -272,7 +274,7 @@ try {
   // ---- Devotee quota: a devotee with quota 1 can issue one pass, not two ----
   const newUser = await req('POST', '/api/auth/users', {
     token,
-    body: { username: 'devotee1', password: 'pass1234', name: 'Devotee One', role: 'devotee', quota: 1 },
+    body: { username: 'devotee1', password: 'pass1234', name: 'Devotee One', role: 'devotee', quota: 1, short_code: 'DV1', email: 'devotee1@example.com' },
   });
   assert(newUser.status === 201 && newUser.data.user.quota === 1, 'admin creates devotee with quota 1');
   const newUserId = newUser.data.user.id;
@@ -473,7 +475,7 @@ try {
 
   const pStats = await req('GET', '/api/stats', { token: pToken });
   assert(
-    pStats.status === 200 && pStats.data.stats.preacher === true && pStats.data.stats.totalHolders === 5,
+    pStats.status === 200 && pStats.data.stats.main_system === true && pStats.data.stats.totalHolders === 5,
     'preacher stats come from main system'
   );
 
@@ -490,7 +492,7 @@ try {
   // An app devotee with a preacher short code gets their passes attributed too
   const codeUser = await req('POST', '/api/auth/users', {
     token: token2b,
-    body: { username: 'mkdevotee', password: 'pass1234', name: 'Mukunda Devotee', role: 'devotee', quota: 5, short_code: 'MKGD' },
+    body: { username: 'mkdevotee', password: 'pass1234', name: 'Mukunda Devotee', role: 'devotee', quota: 5, short_code: 'MKGD', email: 'mkdevotee@example.com' },
   });
   assert(codeUser.status === 201 && codeUser.data.user.short_code === 'MKGD', 'devotee created with preacher short code');
   const codeLogin = await req('POST', '/api/auth/login', { body: { username: 'mkdevotee', password: 'pass1234' } });

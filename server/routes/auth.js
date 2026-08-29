@@ -42,7 +42,7 @@ router.get('/me', requireAuth, wrap(async (req, res) => {
         id: req.user.id,
         username: req.user.username || '',
         name: req.user.name || req.user.username || '',
-        role: 'devotee',
+        role: req.user.role || 'devotee',
         shortCode: req.user.shortCode || '',
       },
     });
@@ -75,12 +75,13 @@ router.post('/preacher-login', loginLimiter, wrap(async (req, res) => {
     throw err;
   }
   const preacher = data.preacher || {};
+  const preacherRole = preacher.role || 'devotee';
   const token = signToken(
     {
       id: preacher.id,
       username: preacher.shortCode || preacher.name || '',
       name: preacher.name || preacher.shortCode || '',
-      role: 'devotee',
+      role: preacherRole,
     },
     { shortCode: preacher.shortCode || '', main_token: data.token }
   );
@@ -90,7 +91,7 @@ router.post('/preacher-login', loginLimiter, wrap(async (req, res) => {
       id: preacher.id,
       username: preacher.shortCode || '',
       name: preacher.name || preacher.shortCode || '',
-      role: 'devotee',
+      role: preacherRole,
       shortCode: preacher.shortCode || '',
     },
   });
@@ -212,10 +213,13 @@ router.post('/users', requireAuth, wrap(async (req, res) => {
         shortCode: cleanCode,
       });
     } catch (err) {
+      // If the main system is not configured (standalone mode), skip sync
+      // rather than blocking user creation. The local user is still created.
       if (err instanceof MainSystemError) {
-        return res.status(err.status || 502).json({ error: `Main system: ${err.message}` });
+        console.warn(`[Auth] Main system sync skipped for ${username}: ${err.message}`);
+      } else {
+        throw err;
       }
-      throw err;
     }
   }
 

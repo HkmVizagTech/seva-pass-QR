@@ -28,7 +28,8 @@ session's work was committed and deployed.
 
 | Endpoint | Purpose |
 |---|---|
-| `POST /api/integration/generate-volunteer-qr` | Claim/create a QR pass. Body: `{ event_id, user_phone_number, user_email?, venue?, category?, preacher?, preacherId? }` → `{ status, qr_code, qr_id }`. `event_id` = event **code** (e.g. `TSTP`). **Category** resolved in priority: requested → INV (Invitee) → GN (General) → "general" → "volunteer". **Preacher** (short code/name) resolved to the preacher account (`preacherId` + name stored on holder). |
+| `POST /api/integration/seva-pass/issue` | **Seva Pass app专用.** Claim/create a QR pass. Body: `{ event_id, user_phone_number, user_email?, name?, venue?, category?, preacher?, preacherId? }` → `{ status, qr_code, qr_id }`. `event_id` = event **code** (e.g. `TSTP`). **Category** resolved in priority: requested → GN (General) → "general" → "volunteer". **Preacher** (short code/name) resolved to the preacher account (`preacherId` + name stored on holder). |
+| `POST /api/integration/generate-volunteer-qr` | **Bulk volunteer QR.** For the mobile app's bulk generation. Body: `{ event_id, holders: [{user_phone_number, name}...], category? }`. **Do not use from Seva Pass app.** |
 | `GET /api/integration/events?status=upcoming\|active\|completed` | List events for sync. Returns `{ _id, name, eventCode, dateStart, dateEnd, venue[], description }`. |
 | `GET /api/integration/events/:eventCode/categories` | **New this session.** Pass types for the Issue Pass dropdown: `[{ _id, name, catCode, entryPoints[] }]`. |
 | `GET /api/integration/events/:eventCode/venues` | Venue list for the issue form. |

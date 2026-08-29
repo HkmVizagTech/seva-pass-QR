@@ -10,7 +10,7 @@ const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).cat
 // token was embedded in their app JWT at login time.
 function requirePreacher(req, res, next) {
   if (!req.user?.main_token) {
-    return res.status(401).json({ error: 'Main system session missing — please log in again' });
+    return res.status(403).json({ error: 'Preacher access required — please log in as a preacher' });
   }
   next();
 }

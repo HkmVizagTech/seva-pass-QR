@@ -169,7 +169,8 @@ issued here can be backed by the main **ISKCON Seva Pass system**
 
 | Endpoint | Request | Response |
 | -------- | ------- | -------- |
-| `POST /api/integration/generate-volunteer-qr` | Header `x-api-key: <INTEGRATION_API_KEY>`; body `{ event_id, user_phone_number, user_email? }` — find-or-create the holder by phone and return its QR | `{ status: true, message, qr_code: <base64 PNG data URL>, qr_id }` |
+| `POST /api/integration/seva-pass/issue` | Header `x-api-key: <INTEGRATION_API_KEY>`; body `{ event_id, user_phone_number, user_email?, name?, venue?, category?, preacher?, preacherId? }` — find-or-create the holder by phone and return its QR | `{ status: true, message, qr_code: <base64 PNG data URL>, qr_id }` |
+| `POST /api/integration/generate-volunteer-qr` | **⚠️ Do not use from this app.** Bulk format (`holders` array). Used by other systems. | — |
 
 Notes:
 - `event_id` is matched against the main system's `Event.eventCode` (or `_id`) — this app
