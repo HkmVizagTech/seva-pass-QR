@@ -77,11 +77,34 @@ router.post('/preacher-login', loginLimiter, wrap(async (req, res) => {
   }
   const preacher = data.preacher || {};
   const preacherRole = preacher.role || 'devotee';
+
+  // Find or create a local User so issued_by in passes points to a valid
+  // local ObjectId.  The short_code links the local user to the main-system
+  // preacher, and the main_system_id lets us resolve the mapping later.
+  let localUser = null;
+  if (preacher.shortCode) {
+    localUser = await User.findOne({ short_code: preacher.shortCode.toUpperCase() });
+  }
+  if (!localUser && email) {
+    localUser = await User.findOne({ username: email.trim().toLowerCase() });
+  }
+  if (!localUser) {
+    const shortCode = (preacher.shortCode || '').toUpperCase() || email?.split('@')[0] || 'preacher';
+    const hash = bcrypt.hashSync(crypto.randomBytes(16).toString('hex'), 10);
+    localUser = await User.create({
+      username: shortCode,
+      password_hash: hash,
+      name: (preacher.name || shortCode).trim(),
+      role: 'devotee',
+      short_code: shortCode,
+    });
+  }
+
   const token = signToken(
     {
-      id: preacher.id,
-      username: preacher.shortCode || preacher.name || '',
-      name: preacher.name || preacher.shortCode || '',
+      id: localUser._id.toString(),
+      username: preacher.shortCode || localUser.username || '',
+      name: preacher.name || preacher.shortCode || localUser.name || '',
       role: preacherRole,
     },
     { shortCode: preacher.shortCode || '', main_token: data.token }
@@ -89,9 +112,9 @@ router.post('/preacher-login', loginLimiter, wrap(async (req, res) => {
   res.json({
     token,
     user: {
-      id: preacher.id,
-      username: preacher.shortCode || '',
-      name: preacher.name || preacher.shortCode || '',
+      id: localUser._id.toString(),
+      username: preacher.shortCode || localUser.username || '',
+      name: preacher.name || preacher.shortCode || localUser.name || '',
       role: preacherRole,
       shortCode: preacher.shortCode || '',
     },

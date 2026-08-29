@@ -4,7 +4,7 @@ import { api, siteOrigin, downloadQrPng, shareWhatsApp } from '../api.js';
 import { QrIcon, DownloadIcon, ExternalIcon, CheckIcon, WhatsAppIcon, CalendarIcon } from '../components/icons.jsx';
 
 const PASS_TYPES = ['General', 'VIP', 'Donor', 'Volunteer', 'Staff', 'Media'];
-const EMPTY = { donor_name: '', phone: '', email: '', pass_type: 'General', event_id: '' };
+const EMPTY = { donor_name: '', phone: '', email: '', pass_type: '', event_id: '' };
 
 export default function IssuePass() {
   const [form, setForm] = useState(EMPTY);
