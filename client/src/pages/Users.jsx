@@ -340,9 +340,12 @@ export default function Users() {
                               <span className="sub">—</span>
                             )}
                           </td>
-                          <td><span className={`badge ${u.role === 'admin' ? 'badge-main' : ''}`}>{u.role}{u.main_system ? ' (main)' : ''}</span></td>
+                          <td><span className={`badge ${u.role === 'admin' ? 'badge-main' : ''}`}>{u.role}</span></td>
                           <td>
-                            <>
+                            {u.main_system ? (
+                              <span className="sub">Set quota</span>
+                            ) : (
+                              <>
                                 {u.quota}
                                 {u.event_quotas && Object.keys(u.event_quotas).length > 0 && (
                                   <div className="sub" style={{ fontSize: '0.7rem', lineHeight: 1.4 }}>
@@ -357,12 +360,15 @@ export default function Users() {
                                   </div>
                                 )}
                               </>
+                            )}
                           </td>
                           <td>
                             {u.used}{' '}
-                            <span className={`badge ${u.used >= u.quota ? 'badge-revoked' : ''}`}>
-                              {u.used >= u.quota ? 'full' : `${u.quota - u.used} left`}
-                            </span>
+                            {!u.main_system && (
+                              <span className={`badge ${u.used >= u.quota ? 'badge-revoked' : ''}`}>
+                                {u.used >= u.quota ? 'full' : `${u.quota - u.used} left`}
+                              </span>
+                            )}
                           </td>
                           <td className="ta-r">
                             <div className="actions">
