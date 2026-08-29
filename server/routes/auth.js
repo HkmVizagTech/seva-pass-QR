@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
 import rateLimit from 'express-rate-limit';
@@ -242,9 +243,24 @@ router.put('/users/:id', requireAuth, wrap(async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.id)) {
     return res.status(400).json({ error: 'Invalid user id' });
   }
-  const user = await User.findById(req.params.id);
+  let user = await User.findById(req.params.id);
+  // If user doesn't exist locally, this might be a main-system preacher.
+  // Create a local record so the admin can manage their quota.
   if (!user) {
-    return res.status(404).json({ error: 'User not found' });
+    const { name, short_code, quota } = req.body || {};
+    const cleanCode = String(short_code || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (!cleanCode) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    const hash = bcrypt.hashSync(crypto.randomBytes(16).toString('hex'), 10);
+    user = await User.create({
+      username: cleanCode,
+      password_hash: hash,
+      name: (name || 'Preacher').trim(),
+      role: 'devotee',
+      quota: quota !== undefined ? Number(quota) : 30,
+      short_code: cleanCode,
+    });
   }
 
   const { name, role, quota, password, short_code, event_quotas } = req.body || {};

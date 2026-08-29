@@ -342,10 +342,7 @@ export default function Users() {
                           </td>
                           <td><span className={`badge ${u.role === 'admin' ? 'badge-main' : ''}`}>{u.role}{u.main_system ? ' (main)' : ''}</span></td>
                           <td>
-                            {u.main_system ? (
-                              <span className="sub">N/A (main system)</span>
-                            ) : (
-                              <>
+                            <>
                                 {u.quota}
                                 {u.event_quotas && Object.keys(u.event_quotas).length > 0 && (
                                   <div className="sub" style={{ fontSize: '0.7rem', lineHeight: 1.4 }}>
@@ -360,7 +357,6 @@ export default function Users() {
                                   </div>
                                 )}
                               </>
-                            )}
                           </td>
                           <td>
                             {u.used}{' '}
@@ -370,18 +366,13 @@ export default function Users() {
                           </td>
                           <td className="ta-r">
                             <div className="actions">
-                              {!u.main_system && (
-                                <button className="btn btn-ghost btn-sm" onClick={() => startEdit(u)}>
-                                  <EditIcon size={14} /> Edit
-                                </button>
-                              )}
+                              <button className="btn btn-ghost btn-sm" onClick={() => startEdit(u)}>
+                                <EditIcon size={14} /> Edit
+                              </button>
                               {!u.main_system && (
                                 <button className="btn btn-ghost btn-sm" style={{ color: 'var(--red)' }} onClick={() => deleteUser(u)} aria-label={`Delete ${u.name}`}>
                                   <TrashIcon size={14} />
                                 </button>
-                              )}
-                              {u.main_system && (
-                                <span className="sub" style={{ fontSize: '0.75rem' }}>Managed on main site</span>
                               )}
                             </div>
                           </td>
