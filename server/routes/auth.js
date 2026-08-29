@@ -177,22 +177,32 @@ router.get('/users', requireAuth, wrap(async (req, res) => {
     // Main system might not be configured — that's fine
   }
 
-  // Merge main system preachers that aren't already in local DB
+  // Merge main system preachers that aren't already in local DB.
+  // Auto-create a local User record so the admin can manage their quota.
   const localShortCodes = new Set(users.map((u) => (u.short_code || '').toUpperCase()));
   for (const p of mainPreachers) {
     const code = (p.shortCode || '').toUpperCase();
     if (code && !localShortCodes.has(code)) {
-      withUsage.push({
-        id: p._id || p.id || '',
+      // Create a local user so the admin can edit quota
+      const hash = bcrypt.hashSync(crypto.randomBytes(16).toString('hex'), 10);
+      const localUser = await User.create({
         username: code,
-        name: p.name || '',
+        password_hash: hash,
+        name: (p.name || code).trim(),
         role: 'devotee',
-        quota: 0,
-        event_quotas: {},
         short_code: code,
-        created_at: p.createdAt || null,
+        quota: 30,
+      });
+      withUsage.push({
+        id: localUser._id.toString(),
+        username: localUser.username,
+        name: localUser.name,
+        role: localUser.role,
+        quota: localUser.quota || 30,
+        event_quotas: {},
+        short_code: localUser.short_code || '',
+        created_at: localUser.created_at,
         used: 0,
-        main_system: true,
       });
     }
   }

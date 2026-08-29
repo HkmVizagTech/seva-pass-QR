@@ -342,44 +342,34 @@ export default function Users() {
                           </td>
                           <td><span className={`badge ${u.role === 'admin' ? 'badge-main' : ''}`}>{u.role}</span></td>
                           <td>
-                            {u.main_system ? (
-                              <span className="sub">Set quota</span>
-                            ) : (
-                              <>
-                                {u.quota}
-                                {u.event_quotas && Object.keys(u.event_quotas).length > 0 && (
-                                  <div className="sub" style={{ fontSize: '0.7rem', lineHeight: 1.4 }}>
-                                    {Object.entries(u.event_quotas).map(([evId, info]) => {
-                                      const ev = events.find((e) => e.id === evId);
-                                      return (
-                                        <div key={evId}>
-                                          {ev?.name || evId}: {info.used}/{info.quota}
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                )}
-                              </>
+                            {u.quota}
+                            {u.event_quotas && Object.keys(u.event_quotas).length > 0 && (
+                              <div className="sub" style={{ fontSize: '0.7rem', lineHeight: 1.4 }}>
+                                {Object.entries(u.event_quotas).map(([evId, info]) => {
+                                  const ev = events.find((e) => e.id === evId);
+                                  return (
+                                    <div key={evId}>
+                                      {ev?.name || evId}: {info.used}/{info.quota}
+                                    </div>
+                                  );
+                                })}
+                              </div>
                             )}
                           </td>
                           <td>
                             {u.used}{' '}
-                            {!u.main_system && (
-                              <span className={`badge ${u.used >= u.quota ? 'badge-revoked' : ''}`}>
-                                {u.used >= u.quota ? 'full' : `${u.quota - u.used} left`}
-                              </span>
-                            )}
+                            <span className={`badge ${u.used >= u.quota ? 'badge-revoked' : ''}`}>
+                              {u.used >= u.quota ? 'full' : `${u.quota - u.used} left`}
+                            </span>
                           </td>
                           <td className="ta-r">
                             <div className="actions">
                               <button className="btn btn-ghost btn-sm" onClick={() => startEdit(u)}>
                                 <EditIcon size={14} /> Edit
                               </button>
-                              {!u.main_system && (
-                                <button className="btn btn-ghost btn-sm" style={{ color: 'var(--red)' }} onClick={() => deleteUser(u)} aria-label={`Delete ${u.name}`}>
-                                  <TrashIcon size={14} />
-                                </button>
-                              )}
+                              <button className="btn btn-ghost btn-sm" style={{ color: 'var(--red)' }} onClick={() => deleteUser(u)} aria-label={`Delete ${u.name}`}>
+                                <TrashIcon size={14} />
+                              </button>
                             </div>
                           </td>
                         </>
