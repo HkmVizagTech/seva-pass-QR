@@ -75,6 +75,7 @@ body,
 #root {
   margin: 0;
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 body {
@@ -1542,6 +1543,11 @@ input:-webkit-autofill:focus {
     max-width: none;
   }
 
+  .topbar {
+    padding: calc(8px + env(safe-area-inset-top)) 6px 12px;
+    margin-bottom: 10px;
+  }
+
   .two-col,
   .scan-layout,
   .form-row,
@@ -1595,6 +1601,19 @@ input:-webkit-autofill:focus {
 
   .login-card {
     padding: 26px 20px;
+  }
+
+  /* Compact modal on mobile */
+  .qr-modal {
+    padding: 16px;
+    max-height: 75vh;
+    max-height: 75dvh;
+    border-radius: 14px;
+  }
+
+  .qr-modal-backdrop {
+    padding: 10px;
+    align-items: flex-end;
   }
 }
 
@@ -1727,10 +1746,12 @@ input:-webkit-autofill:focus {
   padding: 20px;
   width: 100%;
   max-width: 460px;
-  max-height: 85vh;
+  max-height: 80vh;
+  max-height: 80dvh;
   overflow-y: auto;
   animation: slideUp 0.22s ease;
   position: relative;
+  overscroll-behavior: contain;
 }
 
 .qr-modal-close {
