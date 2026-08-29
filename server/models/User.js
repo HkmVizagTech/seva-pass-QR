@@ -8,9 +8,11 @@ const userSchema = new mongoose.Schema(
     name: { type: String, required: true, trim: true },
     role: { type: String, enum: ['admin', 'devotee'], default: 'devotee' },
     quota: { type: Number, default: () => parseInt(process.env.DEVOTEE_DEFAULT_QUOTA, 10) || 30 },
-    // Per-event quotas: { "eventId": number }. When set for an event, overrides the
-    // global `quota` for passes issued against that specific event.
-    event_quotas: { type: Map, of: Number, default: {} },
+    // Per-event quotas. Supports two formats:
+    //   { eventId: number }            — total passes for that event
+    //   { eventId: { catCode: number } } — per-category limits within an event
+    // When set for an event, overrides the global `quota` for that event.
+    event_quotas: { type: Map, of: mongoose.Schema.Types.Mixed, default: {} },
     // The devotee's 4-character preacher code on the main ISKCON system (e.g.
     // MKGD). Passes issued by this devotee are attributed to that preacher.
     short_code: { type: String, trim: true, uppercase: true, default: '' },

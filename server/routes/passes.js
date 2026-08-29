@@ -163,9 +163,12 @@ router.get('/test-main-system', wrap(async (req, res) => {
   }
 }));
 
-async function quotaUsed(userId, eventId) {
+async function quotaUsed(userId, eventId, category) {
   const filter = { issued_by: userId, status: { $ne: 'revoked' } };
   if (eventId) filter.event_id = eventId;
+  if (category) {
+    filter.pass_type = new RegExp(`^${category.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+  }
   return Pass.countDocuments(filter);
 }
 
@@ -221,11 +224,30 @@ router.post('/', wrap(async (req, res) => {
   const buildPass = async () => {
     if (!req.user.main_token) {
       appUser = await User.findById(req.user.id);
-      const eventQuota = event_id && appUser?.event_quotas?.get(String(event_id));
-      const quota = eventQuota || appUser?.quota || 30;
-      const used = await quotaUsed(req.user.id, eventQuota ? event_id : null);
+      const rawQuota = event_id && appUser?.event_quotas?.get(String(event_id));
+      // rawQuota can be: number (old format) or {catCode: num} (per-category)
+      let quota;
+      let categoryLimit = null;
+      if (rawQuota && typeof rawQuota === 'object' && !Array.isArray(rawQuota)) {
+        // Per-category format: sum of all category limits = total for this event
+        quota = Object.values(rawQuota).reduce((s, v) => s + (Number(v) || 0), 0) || appUser?.quota || 30;
+        // If a specific category was selected, check its individual limit
+        const catCode = (category || passType || '').trim().toUpperCase();
+        if (catCode && rawQuota[catCode] != null) {
+          categoryLimit = Number(rawQuota[catCode]);
+        }
+      } else {
+        quota = rawQuota || appUser?.quota || 30;
+      }
+      const used = await quotaUsed(req.user.id, event_id || null);
       if (used >= quota) {
-        return { error: `Quota exceeded: ${used} of ${quota} passes already issued${eventQuota ? ' for this event' : ''}. Revoke an unused pass to free up quota.` };
+        return { error: `Quota exceeded: ${used} of ${quota} passes already issued for this event. Revoke an unused pass to free up quota.` };
+      }
+      if (categoryLimit !== null) {
+        const catUsed = await quotaUsed(req.user.id, event_id || null, (category || passType || '').trim());
+        if (catUsed >= categoryLimit) {
+          return { error: `Category limit reached: ${catUsed} of ${categoryLimit} ${(category || passType || '').trim()} passes already issued for this event.` };
+        }
       }
     }
 

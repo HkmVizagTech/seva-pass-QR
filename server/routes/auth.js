@@ -149,10 +149,8 @@ router.get('/users', requireAuth, wrap(async (req, res) => {
     const eventQuotas = {};
     if (u.event_quotas && u.event_quotas.size) {
       for (const [evId, evQuota] of u.event_quotas) {
-        eventQuotas[evId] = {
-          quota: evQuota,
-          used: usedByEventMap.get(`${u._id}:${evId}`) || 0,
-        };
+        // evQuota can be a number (old format) or {catCode: num} (per-category)
+        eventQuotas[evId] = evQuota;
       }
     }
     return {
@@ -319,12 +317,29 @@ router.put('/users/:id', requireAuth, wrap(async (req, res) => {
     user.password_hash = bcrypt.hashSync(password, 10);
   }
   if (event_quotas !== undefined && event_quotas !== null) {
-    // event_quotas is { eventId: quotaNumber } — only valid ObjectIds with positive ints.
+    // event_quotas supports two formats:
+    //   { eventId: number }              — total passes for that event
+    //   { eventId: { catCode: number } }  — per-category limits within an event
     const cleaned = {};
     if (typeof event_quotas === 'object' && !Array.isArray(event_quotas)) {
       for (const [evId, q] of Object.entries(event_quotas)) {
-        if (mongoose.isValidObjectId(evId) && Number.isInteger(Number(q)) && Number(q) >= 1) {
-          cleaned[evId] = Number(q);
+        if (!mongoose.isValidObjectId(evId)) continue;
+        if (typeof q === 'object' && q !== null && !Array.isArray(q)) {
+          // Per-category format: { catCode: number }
+          const catObj = {};
+          for (const [catCode, limit] of Object.entries(q)) {
+            const n = Number(limit);
+            if (typeof catCode === 'string' && catCode.trim() && Number.isFinite(n) && n >= 0) {
+              catObj[catCode.trim().toUpperCase()] = Math.round(n);
+            }
+          }
+          if (Object.keys(catObj).length > 0) cleaned[evId] = catObj;
+        } else {
+          // Simple number format
+          const n = Number(q);
+          if (Number.isInteger(n) && n >= 1) {
+            cleaned[evId] = n;
+          }
         }
       }
     }
