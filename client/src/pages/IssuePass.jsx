@@ -317,17 +317,31 @@ export default function IssuePass() {
             {venues.length > 0 && (
               <div className="ep-select">
                 <label style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: 6, display: 'block' }}>
-                  Venue (optional)
+                  Venue
                 </label>
-                <p className="sub" style={{ margin: '0 0 8px' }}>Select which venue this pass is for</p>
+                <p className="sub" style={{ margin: '0 0 8px' }}>
+                  Pick the venue this pass is for, or All Venues to let it be used at every venue.
+                </p>
                 <div className="ep-grid">
+                  {/* All Venues = no specific venue. The main system then issues
+                      the pass valid at EVERY venue of the event (allowedVenues = []). */}
+                  <label className={`ep-chip ${selectedVenue === '' ? 'ep-active' : ''}`}>
+                    <input
+                      type="radio"
+                      name="venue"
+                      checked={selectedVenue === ''}
+                      onChange={() => setSelectedVenue('')}
+                    />
+                    <span className="ep-name">All Venues</span>
+                    <span className="ep-type">Valid at every venue</span>
+                  </label>
                   {venues.map((v) => (
                     <label key={v.name} className={`ep-chip ${selectedVenue === v.name ? 'ep-active' : ''}`}>
                       <input
                         type="radio"
                         name="venue"
                         checked={selectedVenue === v.name}
-                        onChange={() => setSelectedVenue(selectedVenue === v.name ? '' : v.name)}
+                        onChange={() => setSelectedVenue(v.name)}
                       />
                       <span className="ep-name">{v.name}</span>
                       {v.address && <span className="ep-type">{v.address}</span>}
