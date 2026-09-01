@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import QRCode from 'qrcode';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -18,42 +19,42 @@ try {
   // Logo not found — QR will render without a center image.
 }
 
+// Try to load qr-code-styling + native deps.  If canvas/jsdom aren't available
+// (e.g. on Railway without native build tools), we gracefully degrade to plain
+// qrcode with colour options.
+let QRCodeStyling = null;
+let nodeCanvas = null;
+let JSDOM = null;
+let styledAvailable = false;
+
+try {
+  const mod = await import('qr-code-styling/lib/qr-code-styling.common.js');
+  QRCodeStyling = mod.QRCodeStyling;
+  const canvasMod = await import('canvas');
+  nodeCanvas = canvasMod.default || canvasMod;
+  const jsdomMod = await import('jsdom');
+  JSDOM = jsdomMod.JSDOM;
+  styledAvailable = true;
+} catch {
+  console.warn('[styledQr] qr-code-styling/canvas/jsdom unavailable — using plain qrcode with colors');
+}
+
 /**
  * Return the common qr-code-styling options for the ISKCON brand.
- *
- * @param {object}  [overrides]
- * @param {number}  [overrides.width]        Canvas width (default 600)
- * @param {number}  [overrides.height]       Canvas height (default 600)
- * @param {boolean} [overrides.includeLogo]  Whether to embed the center logo (default true)
- * @param {number}  [overrides.margin]       Quiet-zone margin in px (default 10)
- * @returns {object} Options object for QRCodeStyling constructor
  */
-export function getStyledQrOptions(overrides = {}) {
+function getStyledQrOptions(overrides = {}) {
   const { width = 600, height = 600, includeLogo = true, margin = 10 } = overrides;
 
   const options = {
     width,
     height,
     margin,
-    data: '',                        // Caller fills this in.
-    qrOptions: {
-      errorCorrectionLevel: 'H',     // High — needed for logo overlay.
-    },
-    dotsOptions: {
-      color: ISKCON_SAFFRON,
-      type: 'rounded',
-    },
-    cornersSquareOptions: {
-      color: ISKCON_DARK,
-      type: 'extra-rounded',
-    },
-    cornersDotOptions: {
-      color: ISKCON_SAFFRON,
-      type: 'rounded',
-    },
-    backgroundOptions: {
-      color: ISKCON_BG,
-    },
+    data: '',
+    qrOptions: { errorCorrectionLevel: 'H' },
+    dotsOptions: { color: ISKCON_SAFFRON, type: 'rounded' },
+    cornersSquareOptions: { color: ISKCON_DARK, type: 'extra-rounded' },
+    cornersDotOptions: { color: ISKCON_SAFFRON, type: 'rounded' },
+    backgroundOptions: { color: ISKCON_BG },
   };
 
   if (includeLogo && logoDataUrl) {
@@ -63,6 +64,7 @@ export function getStyledQrOptions(overrides = {}) {
       margin: 12,
       hideBackgroundDots: true,
       imageSize: 0.30,
+      saveAsBlob: true,
     };
   }
 
@@ -70,48 +72,50 @@ export function getStyledQrOptions(overrides = {}) {
 }
 
 /**
- * Generate a styled QR code as a PNG Buffer (server-side only).
- *
- * @param {string} data  The string to encode.
- * @param {object} [opts] Optional overrides passed to getStyledQrOptions.
- * @returns {Promise<Buffer>} PNG buffer.
+ * Generate a styled QR code as a PNG Buffer.
+ * Falls back to plain qrcode with ISKCON colours if qr-code-styling is unavailable.
  */
 export async function generateStyledQrPng(data, opts = {}) {
-  // Dynamic import — the package uses CommonJS + canvas.
-  const { QRCodeStyling } = await import('qr-code-styling/lib/qr-code-styling.common.js');
-  const nodeCanvas = await import('canvas');
-  const { JSDOM } = await import('jsdom');
+  if (styledAvailable) {
+    const options = getStyledQrOptions(opts);
+    options.data = data;
+    options.nodeCanvas = nodeCanvas;
+    options.jsdom = JSDOM;
 
-  const options = getStyledQrOptions(opts);
-  options.data = data;
-  options.nodeCanvas = nodeCanvas.default || nodeCanvas;
-  options.jsdom = JSDOM;
+    const qr = new QRCodeStyling(options);
+    return qr.getRawData('png');
+  }
 
-  const qr = new QRCodeStyling(options);
-  return qr.getRawData('png');
+  // Fallback: plain qrcode with ISKCON saffron colours
+  return QRCode.toBuffer(data, {
+    type: 'png',
+    width: opts.width || 600,
+    margin: opts.margin ?? 2,
+    color: { dark: ISKCON_SAFFRON, light: ISKCON_BG },
+  });
 }
 
 /**
- * Generate a styled QR code as an SVG string (server-side only).
- *
- * @param {string} data  The string to encode.
- * @param {object} [opts] Optional overrides passed to getStyledQrOptions.
- * @returns {Promise<string>} SVG markup.
+ * Generate a styled QR code as an SVG string.
+ * Falls back to plain qrcode with ISKCON colours if qr-code-styling is unavailable.
  */
 export async function generateStyledQrSvg(data, opts = {}) {
-  const { QRCodeStyling } = await import('qr-code-styling/lib/qr-code-styling.common.js');
-  const { JSDOM } = await import('jsdom');
+  if (styledAvailable) {
+    const options = getStyledQrOptions(opts);
+    options.data = data;
+    options.type = 'svg';
+    options.jsdom = JSDOM;
 
-  const options = getStyledQrOptions(opts);
-  options.data = data;
-  options.type = 'svg';
-  options.jsdom = JSDOM;
-  // Embed the logo as a base64 blob so it renders everywhere (not just URLs).
-  if (options.imageOptions) {
-    options.imageOptions.saveAsBlob = true;
+    const qr = new QRCodeStyling(options);
+    const buf = await qr.getRawData('svg');
+    return buf.toString('utf-8');
   }
 
-  const qr = new QRCodeStyling(options);
-  const buf = await qr.getRawData('svg');
-  return buf.toString('utf-8');
+  // Fallback: plain qrcode SVG with ISKCON saffron colours
+  return QRCode.toString(data, {
+    type: 'svg',
+    width: opts.width || 240,
+    margin: opts.margin ?? 1,
+    color: { dark: ISKCON_SAFFRON, light: ISKCON_BG },
+  });
 }
