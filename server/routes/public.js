@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import QRCode from 'qrcode';
+import { generateStyledQrPng, generateStyledQrSvg } from '../services/styledQr.js';
 import Pass from '../models/Pass.js';
 import Event from '../models/Event.js';
 import { getQrPassDetails } from '../services/mainSystem.js';
@@ -46,7 +47,7 @@ router.get('/passes/:token', wrap(async (req, res) => {
       // Main-system passes carry their own QR image; locals render from content.
       qr_image: pass.main_qr_image || null,
       qr_svg: `data:image/svg+xml;utf8,${encodeURIComponent(
-        await QRCode.toString(pass.qr_content, { type: 'svg', margin: 1, width: 200 })
+        await generateStyledQrSvg(pass.qr_content, { width: 200, height: 200, includeLogo: false })
       )}`,
       // Scan status from the main system
       scan_status: scanStatus,
@@ -64,7 +65,7 @@ router.get('/passes/:token/qr.png', wrap(async (req, res) => {
     res.setHeader('Content-Type', 'image/png');
     return res.send(Buffer.from(base64, 'base64'));
   }
-  const buf = await QRCode.toBuffer(pass.qr_content, { type: 'png', margin: 1, width: 600 });
+  const buf = await generateStyledQrPng(pass.qr_content);
   res.setHeader('Content-Type', 'image/png');
   res.send(buf);
 }));

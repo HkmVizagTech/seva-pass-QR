@@ -1,4 +1,5 @@
 import QRCode from 'qrcode';
+import { generateStyledQrPng } from './styledQr.js';
 
 const WHATSAPP_TOKEN = process.env.WHATSAPP_API_TOKEN;
 const PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID;
@@ -25,7 +26,7 @@ export async function sendPassQrWhatsApp(pass, { phone, caption } = {}) {
     const base64 = String(pass.main_qr_image).replace(/^data:image\/\w+;base64,/, '');
     png = Buffer.from(base64, 'base64');
   } else {
-    png = await QRCode.toBuffer(pass.qr_content, { type: 'png', margin: 1, width: 600 });
+    png = await generateStyledQrPng(pass.qr_content);
   }
 
   const form = new FormData();
@@ -36,14 +37,14 @@ export async function sendPassQrWhatsApp(pass, { phone, caption } = {}) {
     `pass-${pass.token.slice(0, 8)}.png`
   );
 
-  const upload = await fetch(`${BASE_URL}/${PHONE_NUMBER_ID}/media`, {
+  const uploadRes = await fetch(`${BASE_URL}/${PHONE_NUMBER_ID}/media`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}` },
     body: form,
   });
-  if (!upload.ok) throw new Error(`WhatsApp media upload failed (${upload.status})`);
+  if (!uploadRes.ok) throw new Error(`WhatsApp media upload failed (${uploadRes.status})`);
 
-  const { id: mediaId } = await upload.json();
+  const { id: mediaId } = await uploadRes.json();
 
   const message = {
     messaging_product: 'whatsapp',
@@ -54,9 +55,10 @@ export async function sendPassQrWhatsApp(pass, { phone, caption } = {}) {
       id: mediaId,
       caption:
         caption ||
-        `Hare Krishna! Your entry pass (${pass.pass_type}) is attached. ${
-          pass.event_name ? `Event: ${pass.event_name}. ` : ''
-        }Please show this QR at the entrance.`,
+        `Hare Krishna ${pass.donor_name || ''}! 🙏\n\n` +
+        (pass.event_name ? `Event: ${pass.event_name}\n` : '') +
+        `Pass Type: ${pass.pass_type}\n\n` +
+        `Please show this QR at the entrance.`,
     },
   };
 

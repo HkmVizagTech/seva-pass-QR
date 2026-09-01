@@ -2,6 +2,7 @@ import { Router } from 'express';
 import crypto from 'node:crypto';
 import mongoose from 'mongoose';
 import QRCode from 'qrcode';
+import { generateStyledQrPng, generateStyledQrSvg } from '../services/styledQr.js';
 import Pass, { PASS_TYPES, PASS_STATUSES } from '../models/Pass.js';
 import Event from '../models/Event.js';
 import User from '../models/User.js';
@@ -13,8 +14,14 @@ const router = Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
 async function qrSvg(content) {
-  const svg = await QRCode.toString(content, { type: 'svg', margin: 1, width: 240 });
-  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+  try {
+    const svg = await generateStyledQrSvg(content, { width: 240, height: 240, includeLogo: false });
+    return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+  } catch {
+    // Fallback to plain qrcode if styled generation fails.
+    const svg = await QRCode.toString(content, { type: 'svg', margin: 1, width: 240 });
+    return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+  }
 }
 
 function serializePass(doc) {
@@ -342,7 +349,7 @@ router.get('/:id/qr.png', wrap(async (req, res) => {
     res.setHeader('Content-Type', 'image/png');
     return res.send(Buffer.from(base64, 'base64'));
   }
-  const buf = await QRCode.toBuffer(pass.qr_content, { type: 'png', margin: 1, width: 600 });
+  const buf = await generateStyledQrPng(pass.qr_content);
   res.setHeader('Content-Type', 'image/png');
   res.send(buf);
 }));

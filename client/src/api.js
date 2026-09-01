@@ -202,8 +202,7 @@ export async function shareWhatsApp(id, phone, donorName, passToken, mainQrImage
   if (!phone) return;
   const digits = phone.replace(/\D/g, '');
   const international = digits.length === 10 ? '91' + digits : digits;
-  const passUrl = `${siteOrigin()}/pass?t=${passToken}`;
-  const text = `Hare Krishna ${donorName}! Here is your seva pass:\n\n${passUrl}`;
+  const text = `Hare Krishna ${donorName}! Here is your seva pass.`;
 
   // Use the actual gate-scannable QR from the main system if available.
   // For local passes, generate a QR of the pass card URL instead.
@@ -212,11 +211,36 @@ export async function shareWhatsApp(id, phone, donorName, passToken, mainQrImage
     // mainQrImage may be a data URL or raw base64
     base64 = mainQrImage.includes(',') ? mainQrImage.split(',')[1] : mainQrImage;
   } else {
+    const passUrl = `${siteOrigin()}/pass?t=${passToken}`;
     try {
-      const QRCode = await import('qrcode');
-      const dataUrl = await QRCode.toDataURL(passUrl, { width: 600, margin: 1 });
-      base64 = dataUrl.split(',')[1] || '';
-    } catch {}
+      const { QRCodeStyling } = await import('qr-code-styling');
+      const qr = new QRCodeStyling({
+        width: 600,
+        height: 600,
+        margin: 10,
+        data: passUrl,
+        qrOptions: { errorCorrectionLevel: 'H' },
+        dotsOptions: { color: '#FF6B00', type: 'rounded' },
+        cornersSquareOptions: { color: '#1A1A1A', type: 'extra-rounded' },
+        cornersDotOptions: { color: '#FF6B00', type: 'rounded' },
+        backgroundOptions: { color: '#FFFFFF' },
+        image: '/iskcon-logo.png',
+        imageOptions: { crossOrigin: 'anonymous', margin: 12, hideBackgroundDots: true, imageSize: 0.30 },
+      });
+      const blob = await qr.getRawData('png');
+      base64 = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(',')[1] || '');
+        reader.readAsDataURL(blob);
+      });
+    } catch {
+      // Fallback to plain qrcode
+      try {
+        const QRCode = await import('qrcode');
+        const dataUrl = await QRCode.toDataURL(passUrl, { width: 600, margin: 1 });
+        base64 = dataUrl.split(',')[1] || '';
+      } catch {}
+    }
   }
 
   if (base64) {
