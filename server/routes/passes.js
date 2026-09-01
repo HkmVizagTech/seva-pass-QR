@@ -343,12 +343,6 @@ router.get('/:id/qr.png', wrap(async (req, res) => {
     return res.status(404).json({ error: 'Pass not found' });
   }
   res.setHeader('Content-Disposition', `attachment; filename="pass-${pass.token.slice(0, 8)}.png"`);
-  // Main-system passes: hand back the main system's own QR image.
-  if (pass.main_qr_image) {
-    const base64 = String(pass.main_qr_image).replace(/^data:image\/\w+;base64,/, '');
-    res.setHeader('Content-Type', 'image/png');
-    return res.send(Buffer.from(base64, 'base64'));
-  }
   const buf = await generateStyledQrPng(pass.qr_content);
   res.setHeader('Content-Type', 'image/png');
   res.send(buf);

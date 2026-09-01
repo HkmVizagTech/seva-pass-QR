@@ -20,14 +20,10 @@ export async function sendPassQrWhatsApp(pass, { phone, caption } = {}) {
     throw new Error('A recipient phone number is required');
   }
 
-  let png;
-  if (pass.main_qr_image) {
-    // Use the main system's gate-scannable QR image directly.
-    const base64 = String(pass.main_qr_image).replace(/^data:image\/\w+;base64,/, '');
-    png = Buffer.from(base64, 'base64');
-  } else {
-    png = await generateStyledQrPng(pass.qr_content);
-  }
+  // Always generate styled QR from the QR content (ID string).
+  // The scanner reads the ID and validates server-side — no need for the
+  // main system's plain QR image.
+  const png = await generateStyledQrPng(pass.qr_content);
 
   const form = new FormData();
   form.append('messaging_product', 'whatsapp');

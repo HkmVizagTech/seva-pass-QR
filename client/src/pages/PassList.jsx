@@ -547,7 +547,7 @@ function AllPasses({ role }) {
                       <div className="actions" onClick={(e) => e.stopPropagation()}>
                         <button className="btn btn-ghost btn-sm" onClick={() => setDetailPass(p.id)}><EyeIcon size={14} /> Details</button>
                         <button className="btn btn-ghost btn-sm" onClick={() => downloadQrPng(p.id, pngName(p))}><DownloadIcon size={14} /> PNG</button>
-                        {p.phone && <button className="btn btn-ghost btn-sm" onClick={() => shareWhatsApp(p.id, p.phone, p.donor_name, p.token, p.qr_image, p.event_name)}><WhatsAppIcon size={14} /></button>}
+                        {p.phone && <button className="btn btn-ghost btn-sm" onClick={() => shareWhatsApp(p.id, p.phone, p.donor_name, p.token, p.qr_image, p.event_name, p.qr_content)}><WhatsAppIcon size={14} /></button>}
                       </div>
                     </td>
                   </tr>
@@ -587,7 +587,7 @@ function AllPasses({ role }) {
                 <div className="pass-item-actions" onClick={(e) => e.stopPropagation()}>
                   <button className="btn btn-ghost btn-sm" onClick={() => setDetailPass(p.id)}><EyeIcon size={14} /> Details</button>
                   <button className="btn btn-ghost btn-sm" onClick={() => downloadQrPng(p.id, pngName(p))}><DownloadIcon size={14} /> PNG</button>
-                  {p.phone && <button className="btn btn-ghost btn-sm" onClick={() => shareWhatsApp(p.id, p.phone, p.donor_name, p.token, p.qr_image, p.event_name)}><WhatsAppIcon size={14} /> WA</button>}
+                  {p.phone && <button className="btn btn-ghost btn-sm" onClick={() => shareWhatsApp(p.id, p.phone, p.donor_name, p.token, p.qr_image, p.event_name, p.qr_content)}><WhatsAppIcon size={14} /> WA</button>}
                 </div>
               </div>
             ))}
