@@ -17,7 +17,7 @@ const HolderType = require("../models/HolderType");
 const QRPass = require("../models/QRPass");
 const qrService = require("../services/qrService");
 const thirdPartyService = require("../services/thirdPartyService");
-const whatsappService = require("../services/whatsappService");
+// const whatsappService = require("../services/whatsappService"); // disabled — app handles WhatsApp
 
 // Helper: normalise phone
 function normalisePhone(phone) {
@@ -29,24 +29,12 @@ function normalisePhone(phone) {
   return digits;
 }
 
-// Send the QR to the holder's phone via the main system's Flaxxa integration.
-// Non-fatal - WhatsApp failure must never block QR issuance.
-async function trySendWhatsApp(phone, qrImage, holder, event, entryPoints) {
-  try {
-    await whatsappService.sendQRMessage(phone, qrImage, holder.name, event.name, {
-      entryPoints: (entryPoints || []).map((ep) => ({
-        name: ep.name || ep.stationLabel,
-        stationLabel: ep.stationLabel || ep.name,
-      })),
-      validFrom: event.dateStart,
-      venue: (event.venue && event.venue[0] && event.venue[0].name) || "ISKCON Temple, Visakhapatnam",
-      isSponsor: false,
-    });
-    console.log(`[Integration] WhatsApp QR sent to ${phone} for ${event.eventCode}`);
-  } catch (error) {
-    console.error(`[Integration] WhatsApp send skipped for ${phone}:`, error.message);
-  }
-}
+// ── WhatsApp auto-send DISABLED ──────────────────────────────────────────
+// The Seva Pass app now handles WhatsApp delivery itself (styled QR +
+// personalized message via Meta Business API).  Keeping the auto-send
+// here would result in two messages per pass.
+//
+// async function trySendWhatsApp(phone, qrImage, holder, event, entryPoints) { ... }
 
 /** Find an event by eventCode or MongoDB _id. */
 async function findEvent(eventCode) {
@@ -460,7 +448,7 @@ exports.generateVolunteerQR = async (req, res) => {
           event, existingCategory, entryPoints,
         );
         const { image: qrImage } = await qrService.generateQRCode(payload);
-        await trySendWhatsApp(phone, qrImage, existingHolder, event, entryPoints);
+        // await trySendWhatsApp(phone, qrImage, existingHolder, event, entryPoints);
         return res.json({
           status: true,
           message: "QR code already exists — returning existing pass",
@@ -569,7 +557,7 @@ exports.generateVolunteerQR = async (req, res) => {
     const venueLabel = venue ? ` at ${venue}` : "";
     console.log(`[Integration] QR generated for ${phone} (${resolvedName}) at event ${event.eventCode} [${category.catCode}]${venueLabel} via third-party`);
 
-    await trySendWhatsApp(phone, qrImage, holder, event, entryPoints);
+    // await trySendWhatsApp(phone, qrImage, holder, event, entryPoints);
 
     return res.status(200).json({
       status: true, message: "QR code generated successfully",
@@ -786,7 +774,7 @@ exports.sevaPassIssue = async (req, res) => {
           event, existingCategory, entryPoints,
         );
         const { image: qrImage } = await qrService.generateQRCode(payload);
-        await trySendWhatsApp(phone, qrImage, existingHolder, event, entryPoints);
+        // await trySendWhatsApp(phone, qrImage, existingHolder, event, entryPoints);
         return res.json({
           status: true,
           message: "QR code already exists — returning existing pass",
@@ -890,7 +878,7 @@ exports.sevaPassIssue = async (req, res) => {
     const venueLabel = venue ? ` at ${venue}` : "";
     console.log(`[SevaPass] QR generated for ${phone} (${resolvedName}) at event ${event.eventCode} [${category.catCode}]${venueLabel}`);
 
-    await trySendWhatsApp(phone, qrImage, holder, event, entryPoints);
+    // await trySendWhatsApp(phone, qrImage, holder, event, entryPoints);
 
     return res.status(200).json({
       status: true, message: "QR code generated successfully",
