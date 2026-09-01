@@ -15,7 +15,7 @@ const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).cat
 
 async function qrSvg(content) {
   try {
-    const svg = await generateStyledQrSvg(content, { width: 240, height: 240, includeLogo: false });
+    const svg = await generateStyledQrSvg(content, { width: 300, height: 300 });
     return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
   } catch {
     // Fallback to plain qrcode if styled generation fails.

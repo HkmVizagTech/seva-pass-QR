@@ -102,10 +102,14 @@ export async function generateStyledQrSvg(data, opts = {}) {
   const { QRCodeStyling } = await import('qr-code-styling/lib/qr-code-styling.common.js');
   const { JSDOM } = await import('jsdom');
 
-  const options = getStyledQrOptions({ ...opts, includeLogo: false });
+  const options = getStyledQrOptions(opts);
   options.data = data;
   options.type = 'svg';
   options.jsdom = JSDOM;
+  // Embed the logo as a base64 blob so it renders everywhere (not just URLs).
+  if (options.imageOptions) {
+    options.imageOptions.saveAsBlob = true;
+  }
 
   const qr = new QRCodeStyling(options);
   const buf = await qr.getRawData('svg');
