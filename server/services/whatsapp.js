@@ -55,10 +55,7 @@ export async function sendPassQrWhatsApp(pass, { phone, caption } = {}) {
       id: mediaId,
       caption:
         caption ||
-        `Hare Krishna ${pass.donor_name || ''}! 🙏\n\n` +
-        (pass.event_name ? `Event: ${pass.event_name}\n` : '') +
-        `Pass Type: ${pass.pass_type}\n\n` +
-        `Please show this QR at the entrance.`,
+        `Hare Krishna 🙏 ${pass.donor_name || ''}!\nYour QR pass has been issued${pass.event_name ? ` for ${pass.event_name}` : ''}.\nPlease show this QR code at the venue for entry.`,
     },
   };
 

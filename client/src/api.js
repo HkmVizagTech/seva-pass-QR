@@ -198,11 +198,11 @@ export async function downloadQrPng(id, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 100);
 }
 
-export async function shareWhatsApp(id, phone, donorName, passToken, mainQrImage) {
+export async function shareWhatsApp(id, phone, donorName, passToken, mainQrImage, eventName) {
   if (!phone) return;
   const digits = phone.replace(/\D/g, '');
   const international = digits.length === 10 ? '91' + digits : digits;
-  const text = `Hare Krishna ${donorName}! Here is your seva pass.`;
+  const text = `Hare Krishna 🙏 ${donorName}!\nYour QR pass has been issued${eventName ? ` for ${eventName}` : ''}.\nPlease show this QR code at the venue for entry.`;
 
   // Use the actual gate-scannable QR from the main system if available.
   // For local passes, generate a QR of the pass card URL instead.
