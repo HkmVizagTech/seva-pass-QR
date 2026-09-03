@@ -306,6 +306,60 @@ function StationStatus({ redemptionHistory }) {
   );
 }
 
+// ─── View Pass — compact popup with holder details + QR ────────────────────
+// Shows everything about a pass right over the list, no full-page navigation.
+function PassViewModal({ holder, qrUrl, onClose, onScan }) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const details = [
+    ['Name', holder.name],
+    ['Phone', holder.phone || '—'],
+    ['Category', holder.catId?.name || '—' + (holder.catId?.catCode ? ` (${holder.catId.catCode})` : '')],
+    ['Tier', holder.subCategory ? `Tier ${holder.subCategory}` : '—'],
+    ['Event', holder.eventId?.name || '—'],
+    ['Status', holder.qrPass?.status || 'no pass'],
+  ];
+
+  return (
+    <div className="qr-modal-backdrop" onClick={onClose}>
+      <div className="qr-modal" onClick={(e) => e.stopPropagation()}>
+        <button className="qr-modal-close" onClick={onClose}><CloseIcon size={14} /></button>
+        <b style={{ display: 'block', marginBottom: 12, paddingRight: 32 }}>Pass — {holder.name}</b>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '4px 16px', fontSize: '0.85rem', marginBottom: 12 }}>
+          {details.map(([k, v]) => (
+            <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, borderBottom: '1px solid var(--border)', padding: '4px 0' }}>
+              <span style={{ opacity: 0.6 }}>{k}</span>
+              <span style={{ fontWeight: 600, textAlign: 'right' }}>{v}</span>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ textAlign: 'center', margin: '6px 0 12px' }}>
+          {qrUrl === 'error' ? (
+            <p className="muted">Could not load the QR image.</p>
+          ) : qrUrl === 'none' ? (
+            <p className="muted">No QR associated with this pass.</p>
+          ) : qrUrl ? (
+            <img src={qrUrl} alt={`QR for ${holder.name}`} style={{ width: '100%', maxWidth: 280, borderRadius: 12 }} />
+          ) : (
+            <div className="loading">Loading QR…</div>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+          {holder._id && <button className="btn btn-ghost btn-sm" onClick={onScan}>📋 Scan History</button>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 // ─── Preacher view: their own holders from the main system ───────────────────
 function MyPasses() {
   const [holders, setHolders] = useState([]);
@@ -313,6 +367,7 @@ function MyPasses() {
   const [pagination, setPagination] = useState({ total: 0, page: 1, pages: 1 });
   const [q, setQ] = useState('');
   const [category, setCategory] = useState('');
+  const [subCategory, setSubCategory] = useState('');
   const [bahumana, setBahumana] = useState('');
   const [eventCode, setEventCode] = useState('');
   const [page, setPage] = useState(1);
@@ -321,6 +376,7 @@ function MyPasses() {
   const [qrModal, setQrModal] = useState(null);
   const [qrUrl, setQrUrl] = useState('');
   const [scanModal, setScanModal] = useState(null);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     api
@@ -333,7 +389,7 @@ function MyPasses() {
     setLoading(true);
     setError('');
     api
-      .myHolders({ q, category, bahumana, eventCode, page, limit: 20 })
+      .myHolders({ q, category, subCategory, bahumana, eventCode, page, limit: 20 })
       .then((data) => {
         setHolders(data.holders || []);
         setPagination(data.pagination || { total: 0, page: 1, pages: 1 });
@@ -342,17 +398,69 @@ function MyPasses() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(load, [q, category, bahumana, eventCode, page]);
+  // Export all holders matching the current filters to CSV (loops through
+  // every page so the whole result set is included, not just the visible page).
+  const exportCsv = async () => {
+    setExporting(true);
+    setError('');
+    try {
+      const all = [];
+      let pg = 1;
+      let total = 0;
+      do {
+        // eslint-disable-next-line no-await-in-loop
+        const data = await api.myHolders({ q, category, subCategory, bahumana, eventCode, page: pg, limit: 100 });
+        all.push(...(data.holders || []));
+        total = data.pagination?.total || all.length;
+        if (data.pagination?.pages === undefined || pg >= (data.pagination.pages || pg)) break;
+        pg += 1;
+      } while (all.length < total && pg <= 200);
+
+      const rows = [];
+      const head = ['Name', 'Phone', 'Category', 'Tier', 'Event', 'Status', 'Bahumana'];
+      const esc = (v) => {
+        const s = String(v ?? '');
+        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      };
+      rows.push(head.join(','));
+      for (const h of all) {
+        rows.push([
+          esc(h.name),
+          esc(h.phone),
+          esc(h.catId?.name || ''),
+          esc(h.subCategory || ''),
+          esc(h.eventId?.name || ''),
+          esc(h.qrPass?.status || ''),
+          h.bahumanaReceived ? 'Received' : '',
+        ].join(','));
+      }
+      const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `my-passes-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(e.message || 'Export failed');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  useEffect(load, [q, category, subCategory, bahumana, eventCode, page]);
 
   useEffect(() => {
     if (page !== 1) setPage(1);
-  }, [q, category, bahumana, eventCode]);
+  }, [q, category, subCategory, bahumana, eventCode]);
 
-  const openQr = async (holder) => {
+  const openPass = async (holder) => {
     const qrId = holder.qrPass?.qrId;
-    if (!qrId) return;
-    setQrModal({ qrId, name: holder.name });
+    setQrModal({ holder });
     setQrUrl('');
+    if (!qrId) { setQrUrl('none'); return; }
     try {
       setQrUrl(await api.holderQrImage(qrId));
     } catch {
@@ -372,18 +480,27 @@ function MyPasses() {
   return (
     <div className="fade-up">
       <header className="page-header">
-        <div className="page-title">
+        <div className="page-title" style={{ flex: 1 }}>
           <span className="title-icon"><ListIcon size={22} /></span>
           <div>
             <h1>My Passes</h1>
             <p>{pagination.total} devotee(s) under you{pagination.total ? ` · page ${pagination.page}/${pagination.pages}` : ''}</p>
           </div>
         </div>
+        <button className="btn btn-ghost btn-sm" onClick={exportCsv} disabled={exporting || pagination.total === 0} title="Export filtered pass list to CSV">
+          <DownloadIcon size={14} /> {exporting ? 'Exporting…' : 'Export'}
+        </button>
       </header>
 
       <div className="filters">
         <input className="input" placeholder="Search name or phone…" value={q} onChange={(e) => setQ(e.target.value)} />
         <input className="input" placeholder="Category (e.g. INV, SP, DN, VIP)…" value={category} onChange={(e) => setCategory(e.target.value)} />
+        <select className="input" value={subCategory} onChange={(e) => setSubCategory(e.target.value)}>
+          <option value="">Tier: all</option>
+          <option value="A">Tier A</option>
+          <option value="B">Tier B</option>
+          <option value="C">Tier C</option>
+        </select>
         <select className="input" value={bahumana} onChange={(e) => setBahumana(e.target.value)}>
           <option value="">Bahumana: all</option>
           <option value="yes">Bahumana received</option>
@@ -421,14 +538,14 @@ function MyPasses() {
                 {holders.map((h) => (
                   <tr key={h._id}>
                     <td>{h.name}<div className="sub">{h.phone}</div></td>
-                    <td>{h.catId?.name || '—'}{h.catId?.catCode ? ` (${h.catId.catCode})` : ''}</td>
+                    <td>{h.catId?.name || '—'}{h.catId?.catCode ? ` (${h.catId.catCode})` : ''}{h.subCategory ? ` · T${h.subCategory}` : ''}</td>
                     <td>{h.eventId?.name || '—'}</td>
                     <td><span className={`badge badge-${h.qrPass?.status || 'none'}`}>{h.qrPass?.status || 'no pass'}</span></td>
                     <td><StationStatus redemptionHistory={h.qrPass?.redemptionHistory} /></td>
                     <td>{bahumanaLabel(h)}</td>
                     <td className="ta-r">
                       <div className="actions">
-                        {h.qrPass?.qrId && <button className="btn btn-ghost btn-sm" onClick={() => openQr(h)}><EyeIcon size={14} /> QR</button>}
+                        {h.qrPass?.qrId && <button className="btn btn-ghost btn-sm" onClick={() => openPass(h)}><EyeIcon size={14} /> Pass</button>}
                         {h._id && <button className="btn btn-ghost btn-sm" onClick={() => setScanModal(h)}>📋 History</button>}
                       </div>
                     </td>
@@ -450,13 +567,13 @@ function MyPasses() {
                   <span className={`badge badge-${h.qrPass?.status || 'none'}`}>{h.qrPass?.status || 'no pass'}</span>
                 </div>
                 <div className="pass-item-meta">
-                  <div><b>Category</b>{h.catId?.name || '—'}{h.catId?.catCode ? ` (${h.catId.catCode})` : ''}</div>
+                  <div><b>Category</b>{h.catId?.name || '—'}{h.catId?.catCode ? ` (${h.catId.catCode})` : ''}{h.subCategory ? ` · T${h.subCategory}` : ''}</div>
                   <div><b>Event</b>{h.eventId?.name || '—'}</div>
                   <div><b>Bahumana</b>{bahumanaLabel(h)}</div>
                 </div>
                 <ScanBadges history={h.qrPass?.redemptionHistory} />
                 <div className="pass-item-actions">
-                  {h.qrPass?.qrId && <button className="btn btn-ghost btn-sm" onClick={() => openQr(h)}><EyeIcon size={14} /> View QR</button>}
+                  {h.qrPass?.qrId && <button className="btn btn-ghost btn-sm" onClick={() => openPass(h)}><EyeIcon size={14} /> View Pass</button>}
                   {h._id && <button className="btn btn-ghost btn-sm" onClick={() => setScanModal(h)}>📋 History</button>}
                 </div>
               </div>
@@ -473,22 +590,8 @@ function MyPasses() {
         </>
       )}
 
-      {/* QR modal */}
-      {qrModal && (
-        <div className="qr-modal-backdrop" onClick={() => { setQrModal(null); setQrUrl(''); }}>
-          <div className="qr-modal" onClick={(e) => e.stopPropagation()}>
-            <button className="qr-modal-close" onClick={() => { setQrModal(null); setQrUrl(''); }}><CloseIcon size={14} /></button>
-            <b style={{ display: 'block', marginBottom: 12, paddingRight: 32 }}>{qrModal.name}</b>
-            {qrUrl === 'error' ? (
-              <p className="muted">Could not load the QR image.</p>
-            ) : qrUrl ? (
-              <img src={qrUrl} alt={`QR for ${qrModal.name}`} style={{ width: '100%', maxWidth: 320, borderRadius: 12, display: 'block', margin: '0 auto' }} />
-            ) : (
-              <div className="loading">Loading…</div>
-            )}
-          </div>
-        </div>
-      )}
+      {/* View Pass compact modal */}
+      {qrModal && qrModal.holder && <PassViewModal holder={qrModal.holder} qrUrl={qrUrl} onClose={() => { setQrModal(null); setQrUrl(''); }} onScan={() => { setScanModal(qrModal.holder); setQrModal(null); setQrUrl(''); }} />}
 
       {scanModal && <ScanHistoryModal holder={scanModal} onClose={() => setScanModal(null)} />}
     </div>
