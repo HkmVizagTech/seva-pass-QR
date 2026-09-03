@@ -889,9 +889,7 @@ input:-webkit-autofill:focus {
   position: sticky;
   top: 0;
   z-index: 40;
-  background: rgba(255, 251, 240, 0.9);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: rgba(255, 251, 240, 0.98);
   padding: 12px 6px;
   margin-bottom: 10px;
 }
@@ -945,9 +943,7 @@ input:-webkit-autofill:focus {
   left: 0;
   right: 0;
   z-index: 45;
-  background: rgba(255, 255, 255, 0.96);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  background: rgba(255, 255, 255, 0.99);
   border-top: 1px solid var(--border);
   padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
   box-shadow: 0 -6px 24px rgba(23, 29, 77, 0.08);
@@ -1520,13 +1516,11 @@ input:-webkit-autofill:focus {
     display: block;
     position: fixed;
     inset: 0;
-    background: rgba(10, 12, 40, 0.55);
+    background: rgba(10, 12, 40, 0.6);
     z-index: 50;
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.22s ease;
-    backdrop-filter: blur(2px);
-    -webkit-backdrop-filter: blur(2px);
   }
 
   .app-shell.nav-open .nav-backdrop {
@@ -1563,9 +1557,7 @@ input:-webkit-autofill:focus {
     position: sticky;
     top: 70px;
     z-index: 30;
-    background: rgba(255, 251, 240, 0.94);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
+    background: rgba(255, 251, 240, 0.98);
     border-radius: 12px;
     padding: 10px;
     border: 1px solid var(--border);
@@ -1717,7 +1709,12 @@ input:-webkit-autofill:focus {
 .qr-modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(10, 12, 40, 0.58);
+  /* No backdrop-filter here on purpose: it renders unreliably inside the
+     Capacitor/Android WebView this app ships in — the blur can fail to
+     clip to this element and bleed over content outside it like a stray
+     pane of frosted glass. A slightly darker flat scrim gets the same
+     "dim the page behind the card" effect without that risk. */
+  background: rgba(10, 12, 40, 0.68);
   z-index: 100;
   display: flex;
   align-items: center;
