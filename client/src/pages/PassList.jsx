@@ -32,6 +32,67 @@ function ScanBadges({ history, className }) {
   );
 }
 
+// ─── Shared modal shell ─────────────────────────────────────────────────────
+// Fixed header + single scrolling body + pinned footer, so long content never
+// pushes the close button or the actions out of view.
+function Modal({ eyebrow, title, footer, onClose, children }) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    document.body.classList.add('modal-open');
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.classList.remove('modal-open');
+    };
+  }, [onClose]);
+
+  return (
+    <div className="qr-modal-backdrop" onClick={onClose}>
+      <div className="qr-modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+        <div className="qr-modal-header">
+          {eyebrow && <span className="qr-modal-eyebrow">{eyebrow}</span>}
+          <span className="qr-modal-title">{title}</span>
+          <button className="qr-modal-close" onClick={onClose} aria-label="Close">
+            <CloseIcon size={14} />
+          </button>
+        </div>
+        <div className="qr-modal-body">{children}</div>
+        {footer && <div className="qr-modal-footer">{footer}</div>}
+      </div>
+    </div>
+  );
+}
+
+// A label / value row inside a modal
+function DetailRow({ label, value, mono }) {
+  return (
+    <div className="pass-detail-row">
+      <span className="k">{label}</span>
+      <span className={mono ? 'v mono' : 'v'}>{value}</span>
+    </div>
+  );
+}
+
+// One scan entry (shared by both history views)
+function ScanRow({ scan }) {
+  const granted = scan.result === 'granted';
+  return (
+    <div className={granted ? 'scan-row' : 'scan-row denied'}>
+      <span className="icon">{granted ? '✅' : '❌'}</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="who">
+          {scan.epId?.name || scan.stationLabel || 'Station'}
+          <span style={{ fontWeight: 400, opacity: 0.7, marginLeft: 6 }}>({scan.result})</span>
+        </div>
+        <div className="when">
+          {scan.scannedAt ? formatDateTime(scan.scannedAt) : '—'}
+          {scan.scannedBy && <span> · by {scan.scannedBy}</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Pass Detail Modal ──────────────────────────────────────────────────────
 function PassDetailModal({ passId, onClose }) {
   const [pass, setPass] = useState(null);
@@ -50,12 +111,6 @@ function PassDetailModal({ passId, onClose }) {
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, [passId]);
-
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
 
   const handleRevoke = async () => {
     if (!window.confirm('Revoke this pass? The devotee will no longer be able to use it.')) return;
@@ -84,143 +139,136 @@ function PassDetailModal({ passId, onClose }) {
     }
   };
 
+  const st = pass ? displayStatus(pass) : '';
+  const footer = pass ? (
+    <>
+      {(pass.qr_image || pass.qr_svg) && (
+        <button className="btn btn-ghost btn-sm" onClick={() => downloadQrPng(pass.id || passId, `${(pass.donor_name || 'pass').replace(/\s+/g, '-')}-pass.png`)}>
+          <DownloadIcon size={14} /> Download PNG
+        </button>
+      )}
+      {st === 'unused' && (
+        <button
+          className="btn btn-ghost btn-sm"
+          style={{ color: 'var(--red)' }}
+          onClick={handleRevoke}
+          disabled={revoking}
+        >
+          {revoking ? 'Revoking…' : 'Revoke pass'}
+        </button>
+      )}
+    </>
+  ) : null;
+
   return (
-    <div className="qr-modal-backdrop" onClick={onClose}>
-      <div className="qr-modal" onClick={(e) => e.stopPropagation()}>
-        <button className="qr-modal-close" onClick={onClose}><CloseIcon size={14} /></button>
-        <b style={{ fontSize: '1rem', display: 'block', marginBottom: 14, paddingRight: 32 }}>Pass Details</b>
-
-        {loading ? (
-          <div className="loading">Loading…</div>
-        ) : error ? (
-          <div className="alert alert-error">{error}</div>
-        ) : pass ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {/* Status */}
-            <div style={{
-              padding: '10px 14px', borderRadius: 10, fontWeight: 600, fontSize: '0.9rem',
-              background: displayStatus(pass) === 'used' ? 'var(--green-bg)' : displayStatus(pass) === 'revoked' ? 'var(--red-bg)' : 'var(--cream)',
-              color: displayStatus(pass) === 'used' ? 'var(--green)' : displayStatus(pass) === 'revoked' ? 'var(--red)' : 'var(--text)',
-              display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'space-between',
-            }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                {displayStatus(pass) === 'used' ? '✅' : displayStatus(pass) === 'revoked' ? '🚫' : '🎫'}
-                {pass.live_status || pass.status}
-                {pass.live_status && pass.live_status !== pass.status && (
-                  <span style={{ fontWeight: 400, fontSize: '0.75rem', opacity: 0.7 }}>(live)</span>
-                )}
-              </span>
-              {displayStatus(pass) === 'unused' && (
-                <button
-                  className="btn btn-ghost btn-sm"
-                  style={{ color: 'var(--red)', fontSize: '0.8rem', padding: '2px 8px' }}
-                  onClick={handleRevoke}
-                  disabled={revoking}
-                >
-                  {revoking ? 'Revoking…' : 'Revoke'}
-                </button>
-              )}
-            </div>
-
-            {/* Info grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px', fontSize: '0.85rem' }}>
-              <div><span className="sub">Name</span><br /><b>{pass.donor_name}</b></div>
-              <div><span className="sub">Phone</span><br />{pass.phone || '—'}</div>
-              <div><span className="sub">Email</span><br />{pass.email || '—'}</div>
-              <div><span className="sub">Type</span><br />{pass.pass_type}</div>
-              <div><span className="sub">Event</span><br />{pass.event_name || '—'}</div>
-              <div><span className="sub">Source</span><br />{pass.source}</div>
-              <div><span className="sub">Issued by</span><br />{pass.issuer_name || '—'}</div>
-              <div><span className="sub">Issued on</span><br />{pass.created_at ? formatDateTime(pass.created_at) : '—'}</div>
-              {pass.qr_token && <div style={{ gridColumn: '1 / -1' }}><span className="sub">QR ID</span><br /><span style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{pass.qr_token}</span></div>}
-            </div>
-
-            {/* Delivery */}
-            {pass.delivery_status && pass.delivery_status !== 'pending' && (
-              <div style={{ fontSize: '0.85rem' }}>
-                <span className="sub">Delivery</span>{' '}
-                <span className={`badge ${pass.delivery_status === 'sent' || pass.delivery_status === 'delivered' ? 'badge-used' : 'badge-revoked'}`}>
-                  {pass.delivery_status}
-                </span>
-                {pass.delivery_status === 'failed' && pass.delivery_error && (
-                  <div style={{ marginTop: 6, color: 'var(--red)', fontSize: '0.8rem', wordBreak: 'break-word' }}>
-                    {pass.delivery_error}
-                  </div>
-                )}
-                {pass.delivery_status === 'failed' && (
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    style={{ marginTop: 8, color: 'var(--green)', fontSize: '0.8rem', padding: '2px 8px' }}
-                    onClick={handleRetryDelivery}
-                    disabled={retrying}
-                  >
-                    {retrying ? 'Retrying…' : '↻ Retry delivery'}
-                  </button>
-                )}
-              </div>
-            )}
-            {pass.community_app_sync && (
-              <div style={{ fontSize: '0.85rem' }}>
-                <span className="sub">Vaikuntham app</span>{' '}
-                <span className={`badge ${pass.community_app_sync.startsWith('sent') ? 'badge-used' : 'badge-revoked'}`}>
-                  {pass.community_app_sync.split(':')[0]}
-                </span>
-                {pass.community_app_sync.startsWith('failed') && (
-                  <div style={{ marginTop: 6, color: 'var(--red)', fontSize: '0.8rem', wordBreak: 'break-word' }}>
-                    {pass.community_app_sync.split(':').slice(1).join(':')}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Scan history */}
-            {pass.redemption_history && pass.redemption_history.length > 0 && (
-              <div>
-                <div style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: 6 }}>Scan History</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {pass.redemption_history.map((scan, i) => (
-                    <div key={i} style={{
-                      display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 12px',
-                      background: scan.result === 'granted' ? 'var(--green-bg)' : 'var(--red-bg)',
-                      borderRadius: 10, fontSize: '0.85rem',
-                    }}>
-                      <span style={{ fontSize: '1.1rem', flexShrink: 0 }}>
-                        {scan.result === 'granted' ? '✅' : '❌'}
-                      </span>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 600 }}>
-                          {scan.epId?.name || scan.stationLabel || 'Station'}
-                          <span style={{ fontWeight: 400, opacity: 0.7, marginLeft: 6 }}>
-                            ({scan.result})
-                          </span>
-                        </div>
-                        <div style={{ fontSize: '0.78rem', opacity: 0.7 }}>
-                          {scan.scannedAt ? formatDateTime(scan.scannedAt) : '—'}
-                          {scan.scannedBy && <span> · by {scan.scannedBy}</span>}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {(!pass.redemption_history || pass.redemption_history.length === 0) && (
-              <div className="sub" style={{ fontSize: '0.85rem', textAlign: 'center', padding: '8px 0' }}>
-                No scans recorded yet
-              </div>
-            )}
-
-            {/* QR preview */}
-            {(pass.qr_image || pass.qr_svg) && (
-              <div style={{ textAlign: 'center' }}>
-                <img src={pass.qr_image || pass.qr_svg} alt="QR" style={{ maxWidth: 180, borderRadius: 10 }} />
-              </div>
+    <Modal
+      eyebrow="Pass details"
+      title={pass ? pass.donor_name : 'Pass'}
+      footer={footer}
+      onClose={onClose}
+    >
+      {loading ? (
+        <div className="loading">Loading…</div>
+      ) : error ? (
+        <div className="alert alert-error" style={{ margin: 0 }}>{error}</div>
+      ) : pass ? (
+        <>
+          {/* Status */}
+          <div className={`pass-status-strip${st === 'used' ? ' is-used' : st === 'revoked' ? ' is-revoked' : ''}`}>
+            <span className="label">
+              {st === 'used' ? '✅' : st === 'revoked' ? '🚫' : '🎫'}
+              {pass.live_status || pass.status}
+            </span>
+            {pass.live_status && pass.live_status !== pass.status && (
+              <span style={{ fontWeight: 400, fontSize: '0.75rem', opacity: 0.7 }}>live</span>
             )}
           </div>
-        ) : null}
-      </div>
-    </div>
+
+          {/* QR first — it is what people open this card for */}
+          {(pass.qr_image || pass.qr_svg) && (
+            <div className="qr-frame">
+              <img src={pass.qr_image || pass.qr_svg} alt={`QR for ${pass.donor_name}`} />
+              <span className="qr-frame-caption">Show this at the entry gate</span>
+            </div>
+          )}
+
+          {/* Info */}
+          <div className="pass-detail-list">
+            <DetailRow label="Name" value={pass.donor_name} />
+            <DetailRow label="Phone" value={pass.phone || '—'} />
+            {pass.email && <DetailRow label="Email" value={pass.email} />}
+            <DetailRow label="Type" value={pass.pass_type} />
+            <DetailRow label="Event" value={pass.event_name || '—'} />
+            <DetailRow label="Source" value={pass.source} />
+            <DetailRow label="Issued by" value={pass.issuer_name || '—'} />
+            <DetailRow label="Issued on" value={pass.created_at ? formatDateTime(pass.created_at) : '—'} />
+            {pass.qr_token && <DetailRow label="QR ID" value={pass.qr_token} mono />}
+          </div>
+
+          {/* Delivery */}
+          {((pass.delivery_status && pass.delivery_status !== 'pending') || pass.community_app_sync) && (
+            <div className="pass-detail-list">
+              {pass.delivery_status && pass.delivery_status !== 'pending' && (
+                <>
+                  <DetailRow
+                    label="Delivery"
+                    value={
+                      <span className={`badge ${pass.delivery_status === 'sent' || pass.delivery_status === 'delivered' ? 'badge-used' : 'badge-revoked'}`}>
+                        {pass.delivery_status}
+                      </span>
+                    }
+                  />
+                  {pass.delivery_status === 'failed' && (
+                    <div className="pass-detail-row" style={{ display: 'block' }}>
+                      {pass.delivery_error && (
+                        <div style={{ color: 'var(--red)', fontSize: '0.8rem', overflowWrap: 'anywhere' }}>
+                          {pass.delivery_error}
+                        </div>
+                      )}
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        style={{ marginTop: 8, color: 'var(--green)' }}
+                        onClick={handleRetryDelivery}
+                        disabled={retrying}
+                      >
+                        {retrying ? 'Retrying…' : '↻ Retry delivery'}
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+              {pass.community_app_sync && (
+                <>
+                  <DetailRow
+                    label="Vaikuntham app"
+                    value={
+                      <span className={`badge ${pass.community_app_sync.startsWith('sent') ? 'badge-used' : 'badge-revoked'}`}>
+                        {pass.community_app_sync.split(':')[0]}
+                      </span>
+                    }
+                  />
+                  {pass.community_app_sync.startsWith('failed') && (
+                    <div className="pass-detail-row" style={{ display: 'block', color: 'var(--red)', fontSize: '0.8rem', overflowWrap: 'anywhere' }}>
+                      {pass.community_app_sync.split(':').slice(1).join(':')}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Scan history */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <span className="qr-modal-section-title">Scan history</span>
+            {pass.redemption_history && pass.redemption_history.length > 0 ? (
+              pass.redemption_history.map((scan, i) => <ScanRow key={i} scan={scan} />)
+            ) : (
+              <div className="qr-modal-empty">No scans recorded yet</div>
+            )}
+          </div>
+        </>
+      ) : null}
+    </Modal>
   );
 }
 
@@ -240,52 +288,20 @@ function ScanHistoryModal({ holder, onClose }) {
       .finally(() => setLoading(false));
   }, [holder?._id]);
 
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
   return (
-    <div className="qr-modal-backdrop" onClick={onClose}>
-      <div className="qr-modal" onClick={(e) => e.stopPropagation()}>
-        <button className="qr-modal-close" onClick={onClose}><CloseIcon size={14} /></button>
-        <b style={{ display: 'block', marginBottom: 12, paddingRight: 32 }}>Scan History — {holder.name}</b>
-
-        {loading ? (
-          <div className="loading">Loading…</div>
-        ) : error ? (
-          <div className="alert alert-error">{error}</div>
-        ) : !history || history.length === 0 ? (
-          <p className="muted">No scans recorded yet.</p>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {history.map((scan, i) => (
-              <div key={i} style={{
-                display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 12px',
-                background: scan.result === 'granted' ? 'var(--green-bg)' : 'var(--red-bg)',
-                borderRadius: 10, fontSize: '0.85rem',
-              }}>
-                <span style={{ fontSize: '1.1rem', flexShrink: 0 }}>
-                  {scan.result === 'granted' ? '✅' : '❌'}
-                </span>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 600 }}>
-                    {scan.epId?.name || scan.stationLabel || 'Station'}
-                    <span style={{ fontWeight: 400, opacity: 0.7, marginLeft: 6 }}>
-                      ({scan.result})
-                    </span>
-                  </div>
-                  <div style={{ fontSize: '0.78rem', opacity: 0.7 }}>
-                    {scan.scannedAt ? formatDateTime(scan.scannedAt) : '—'}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
+    <Modal eyebrow="Scan history" title={holder.name} onClose={onClose}>
+      {loading ? (
+        <div className="loading">Loading…</div>
+      ) : error ? (
+        <div className="alert alert-error" style={{ margin: 0 }}>{error}</div>
+      ) : !history || history.length === 0 ? (
+        <div className="qr-modal-empty">No scans recorded yet.</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {history.map((scan, i) => <ScanRow key={i} scan={scan} />)}
+        </div>
+      )}
+    </Modal>
   );
 }
 
@@ -309,53 +325,52 @@ function StationStatus({ redemptionHistory }) {
 // ─── View Pass — compact popup with holder details + QR ────────────────────
 // Shows everything about a pass right over the list, no full-page navigation.
 function PassViewModal({ holder, qrUrl, onClose, onScan }) {
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  const catName = holder.catId?.name
+    ? `${holder.catId.name}${holder.catId.catCode ? ` (${holder.catId.catCode})` : ''}`
+    : '—';
+  const status = holder.qrPass?.status || 'no pass';
 
   const details = [
-    ['Name', holder.name],
     ['Phone', holder.phone || '—'],
-    ['Category', holder.catId?.name || '—' + (holder.catId?.catCode ? ` (${holder.catId.catCode})` : '')],
+    ['Category', catName],
     ['Tier', holder.subCategory ? `Tier ${holder.subCategory}` : '—'],
     ['Event', holder.eventId?.name || '—'],
-    ['Status', holder.qrPass?.status || 'no pass'],
   ];
 
   return (
-    <div className="qr-modal-backdrop" onClick={onClose}>
-      <div className="qr-modal" onClick={(e) => e.stopPropagation()}>
-        <button className="qr-modal-close" onClick={onClose}><CloseIcon size={14} /></button>
-        <b style={{ display: 'block', marginBottom: 12, paddingRight: 32 }}>Pass — {holder.name}</b>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '4px 16px', fontSize: '0.85rem', marginBottom: 12 }}>
-          {details.map(([k, v]) => (
-            <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, borderBottom: '1px solid var(--border)', padding: '4px 0' }}>
-              <span style={{ opacity: 0.6 }}>{k}</span>
-              <span style={{ fontWeight: 600, textAlign: 'right' }}>{v}</span>
-            </div>
-          ))}
-        </div>
-
-        <div style={{ textAlign: 'center', margin: '6px 0 12px' }}>
-          {qrUrl === 'error' ? (
-            <p className="muted">Could not load the QR image.</p>
-          ) : qrUrl === 'none' ? (
-            <p className="muted">No QR associated with this pass.</p>
-          ) : qrUrl ? (
-            <img src={qrUrl} alt={`QR for ${holder.name}`} style={{ width: '100%', maxWidth: 280, borderRadius: 12 }} />
-          ) : (
-            <div className="loading">Loading QR…</div>
-          )}
-        </div>
-
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
-          {holder._id && <button className="btn btn-ghost btn-sm" onClick={onScan}>📋 Scan History</button>}
-        </div>
+    <Modal
+      eyebrow="Pass"
+      title={holder.name}
+      onClose={onClose}
+      footer={holder._id ? <button className="btn btn-ghost btn-sm" onClick={onScan}>📋 Scan history</button> : null}
+    >
+      <div className={`pass-status-strip${status === 'used' ? ' is-used' : status === 'revoked' ? ' is-revoked' : ''}`}>
+        <span className="label">
+          {status === 'used' ? '✅' : status === 'revoked' ? '🚫' : '🎫'}
+          {status}
+        </span>
       </div>
-    </div>
+
+      {/* QR — the reason this card gets opened, so it leads */}
+      <div className="qr-frame">
+        {qrUrl === 'error' ? (
+          <p className="qr-frame-caption" style={{ color: 'var(--red)', margin: 0 }}>Could not load the QR image.</p>
+        ) : qrUrl === 'none' ? (
+          <p className="qr-frame-caption" style={{ margin: 0 }}>No QR associated with this pass.</p>
+        ) : qrUrl ? (
+          <>
+            <img src={qrUrl} alt={`QR for ${holder.name}`} />
+            <span className="qr-frame-caption">Show this at the entry gate</span>
+          </>
+        ) : (
+          <div className="loading">Loading QR…</div>
+        )}
+      </div>
+
+      <div className="pass-detail-list">
+        {details.map(([k, v]) => <DetailRow key={k} label={k} value={v} />)}
+      </div>
+    </Modal>
   );
 }
 
