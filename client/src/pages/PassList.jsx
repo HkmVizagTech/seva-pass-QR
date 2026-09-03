@@ -657,5 +657,5 @@ export default function PassList() {
 
   if (role === null) return <div className="loading">Loading…</div>;
 
-  return role === 'devotee' ? <MyPasses /> : <AllPasses role={role} />;
+  return role === 'admin' ? <AllPasses role={role} /> : <MyPasses />;
 }

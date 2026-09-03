@@ -226,6 +226,7 @@ export default function Users() {
                       <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{u.name}</div>
                       <div className="sub" style={{ fontSize: '0.78rem' }}>
                         @{u.username}
+                        {u.email && <span style={{ marginLeft: 6 }}>· {u.email}</span>}
                         {u.short_code && <span style={{ marginLeft: 6, fontFamily: 'monospace', letterSpacing: 1 }}>· {u.short_code}</span>}
                         <span style={{ marginLeft: 6 }}>· {u.role}</span>
                       </div>

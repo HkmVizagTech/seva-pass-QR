@@ -6,6 +6,10 @@ const userSchema = new mongoose.Schema(
     username: { type: String, required: true, unique: true, trim: true, lowercase: true },
     password_hash: { type: String, required: true },
     name: { type: String, required: true, trim: true },
+    // Devotee's email address on the main ISKCON system (= the preacher email).
+    // Shown in the admin Users page so admins can match devotees to preachers.
+    email: { type: String, trim: true, lowercase: true, default: '' },
+    phone: { type: String, trim: true, default: '' },
     role: { type: String, enum: ['admin', 'devotee'], default: 'devotee' },
     quota: { type: Number, default: () => parseInt(process.env.DEVOTEE_DEFAULT_QUOTA, 10) || 30 },
     // Per-event quotas. Supports two formats:

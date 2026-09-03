@@ -81,6 +81,8 @@ router.post('/preacher-login', loginLimiter, wrap(async (req, res) => {
   // Find or create a local User so issued_by in passes points to a valid
   // local ObjectId.  The short_code links the local user to the main-system
   // preacher, and the main_system_id lets us resolve the mapping later.
+  const preacherEmail = (email || '').toString().trim().toLowerCase();
+  const preacherPhone = phone ? String(phone).trim() : '';
   let localUser = null;
   if (preacher.shortCode) {
     localUser = await User.findOne({ short_code: preacher.shortCode.toUpperCase() });
@@ -97,7 +99,16 @@ router.post('/preacher-login', loginLimiter, wrap(async (req, res) => {
       name: (preacher.name || shortCode).trim(),
       role: 'devotee',
       short_code: shortCode,
+      email: preacherEmail,
+      phone: preacherPhone,
     });
+  } else if (preacherEmail || preacherPhone) {
+    // Refresh the preacher's email/phone from the live main system so the
+    // admin Users page always shows up-to-date contact details.
+    const upd = {};
+    if (preacherEmail) upd.email = preacherEmail;
+    if (preacherPhone) upd.phone = preacherPhone;
+    await User.updateOne({ _id: localUser._id }, { $set: upd });
   }
 
   const token = signToken(
@@ -125,7 +136,7 @@ router.get('/users', requireAuth, wrap(async (req, res) => {
   if (req.user.role !== 'admin') {
     return res.status(403).json({ error: 'Admin access required' });
   }
-  const users = await User.find().select('username name role quota event_quotas short_code created_at').sort({ created_at: 1 }).lean();
+  const users = await User.find().select('username name email phone role quota event_quotas short_code created_at').sort({ created_at: 1 }).lean();
 
   // Count non-revoked passes per devotee (total + per-event) so the admin page
   // can show quota usage for both global and per-event quotas.
@@ -157,6 +168,8 @@ router.get('/users', requireAuth, wrap(async (req, res) => {
       id: u._id.toString(),
       username: u.username,
       name: u.name,
+      email: u.email || '',
+      phone: u.phone || '',
       role: u.role,
       quota: u.quota || 30,
       event_quotas: eventQuotas,
@@ -189,12 +202,16 @@ router.get('/users', requireAuth, wrap(async (req, res) => {
         name: (p.name || code).trim(),
         role: 'devotee',
         short_code: code,
+        email: (p.email || '').toString().trim().toLowerCase(),
+        phone: p.phone ? String(p.phone) : '',
         quota: 30,
       });
       withUsage.push({
         id: localUser._id.toString(),
         username: localUser.username,
         name: localUser.name,
+        email: localUser.email || '',
+        phone: localUser.phone || '',
         role: localUser.role,
         quota: localUser.quota || 30,
         event_quotas: {},
@@ -263,6 +280,8 @@ router.post('/users', requireAuth, wrap(async (req, res) => {
     role,
     quota: quota === undefined ? undefined : Number(quota),
     short_code: cleanCode,
+    email: (email || '').trim().toLowerCase(),
+    phone: phone ? String(phone).trim() : '',
   });
   res.status(201).json({ user: publicUser(user) });
 }));
@@ -294,11 +313,17 @@ router.put('/users/:id', requireAuth, wrap(async (req, res) => {
     });
   }
 
-  const { name, role, quota, password, short_code, event_quotas } = req.body || {};
+  const { name, role, quota, password, short_code, event_quotas, email, phone } = req.body || {};
 
   if (name !== undefined) {
     if (!String(name).trim()) return res.status(400).json({ error: 'name cannot be empty' });
     user.name = String(name).trim();
+  }
+  if (email !== undefined) {
+    user.email = String(email).trim().toLowerCase();
+  }
+  if (phone !== undefined) {
+    user.phone = String(phone).trim();
   }
   if (role !== undefined) {
     if (!['admin', 'devotee'].includes(role)) return res.status(400).json({ error: 'role must be admin or devotee' });
