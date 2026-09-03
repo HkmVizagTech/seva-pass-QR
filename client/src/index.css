@@ -147,11 +147,11 @@ code {
 
 @keyframes fadeUp {
   from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  to { opacity: 1; transform: none; }
 }
 
 .fade-up {
-  animation: fadeUp 0.3s ease both;
+  animation: fadeUp 0.3s ease backwards;
 }
 
 /* ---------- Buttons ---------- */
@@ -473,7 +473,7 @@ input:-webkit-autofill:focus {
   position: relative;
   overflow: hidden;
   box-shadow: var(--shadow-sm);
-  animation: fadeUp 0.3s ease both;
+  animation: fadeUp 0.3s ease backwards;
 }
 
 .stat-card::before {
@@ -1188,7 +1188,7 @@ input:-webkit-autofill:focus {
   position: relative;
   box-shadow: var(--shadow-lg);
   overflow: hidden;
-  animation: fadeUp 0.4s ease both;
+  animation: fadeUp 0.4s ease backwards;
 }
 
 .public-card::before {
