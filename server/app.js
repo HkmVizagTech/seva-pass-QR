@@ -11,6 +11,7 @@ import passRoutes from './routes/passes.js';
 import statsRoutes from './routes/stats.js';
 import publicRoutes from './routes/public.js';
 import preacherRoutes from './routes/preachers.js';
+import webhookRoutes from './routes/webhooks.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -54,6 +55,7 @@ export function createApp() {
   app.use('/api/stats', requireAuth, statsRoutes);
   app.use('/api/preachers', preacherRoutes);
   app.use('/api/public', publicRoutes);
+  app.use('/api/webhooks/whatsapp', webhookRoutes);
 
   app.use((err, req, res, next) => {
     console.error(err);

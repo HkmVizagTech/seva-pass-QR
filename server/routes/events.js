@@ -45,6 +45,7 @@ async function autoSyncMainEvents() {
             date: ev.dateStart ? new Date(ev.dateStart).toISOString().slice(0, 10) : '',
             date_start: ev.dateStart ? new Date(ev.dateStart).toISOString() : '',
             date_end: ev.dateEnd ? new Date(ev.dateEnd).toISOString() : '',
+            third_party_event_id: ev.thirdPartyEventId || ev.third_party_event_id || '',
           },
         },
         { upsert: true, setDefaultsOnInsert: true, runValidators: true }
@@ -75,6 +76,7 @@ router.get('/', wrap(async (req, res) => {
         date: 1,
         date_start: 1,
         date_end: 1,
+        third_party_event_id: 1,
         created_by: 1,
         created_at: 1,
         id: '$_id',
@@ -128,6 +130,7 @@ router.post('/sync', wrap(async (req, res) => {
           date,
           date_start: ev.dateStart ? new Date(ev.dateStart).toISOString() : '',
           date_end: ev.dateEnd ? new Date(ev.dateEnd).toISOString() : '',
+          third_party_event_id: ev.thirdPartyEventId || ev.third_party_event_id || '',
         },
       },
       { upsert: true, new: true, runValidators: true },
@@ -156,6 +159,22 @@ router.get('/:id', wrap(async (req, res) => {
     return res.status(404).json({ error: 'Event not found' });
   }
   res.json({ event });
+}));
+
+// Update the Vaikuntham (community app) external event id for an event.
+// When set, every QR issued for this event is pushed to the community app.
+router.patch('/:id/community-app', wrap(async (req, res) => {
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+  const event = await Event.findById(req.params.id);
+  if (!event) {
+    return res.status(404).json({ error: 'Event not found' });
+  }
+  const { third_party_event_id } = req.body || {};
+  event.third_party_event_id = String(third_party_event_id || '').trim();
+  await event.save();
+  res.json({ ok: true, event });
 }));
 
 // Get available categories for an event from the main system.

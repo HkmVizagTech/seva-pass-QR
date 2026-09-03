@@ -10,6 +10,9 @@ const eventSchema = new mongoose.Schema(
     // an event is live/upcoming (shown) or completed (hidden).
     date_start: { type: String, default: '' },
     date_end: { type: String, default: '' },
+    // Vaikuntham / community app event_id — if set, every QR issued for this
+    // event is pushed to harekrishnavizag.co.in using this id.
+    third_party_event_id: { type: String, default: '' },
     created_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   },
   {

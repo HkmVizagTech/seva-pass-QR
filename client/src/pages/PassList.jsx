@@ -38,6 +38,7 @@ function PassDetailModal({ passId, onClose }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [revoking, setRevoking] = useState(false);
+  const [retrying, setRetrying] = useState(false);
 
   useEffect(() => {
     if (!passId) return;
@@ -67,6 +68,19 @@ function PassDetailModal({ passId, onClose }) {
       setError(e.message);
     } finally {
       setRevoking(false);
+    }
+  };
+
+  const handleRetryDelivery = async () => {
+    setRetrying(true);
+    setError('');
+    try {
+      const { pass: updated } = await api.retryDelivery(passId);
+      setPass(updated);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setRetrying(false);
     }
   };
 
@@ -128,6 +142,34 @@ function PassDetailModal({ passId, onClose }) {
                 <span className={`badge ${pass.delivery_status === 'sent' || pass.delivery_status === 'delivered' ? 'badge-used' : 'badge-revoked'}`}>
                   {pass.delivery_status}
                 </span>
+                {pass.delivery_status === 'failed' && pass.delivery_error && (
+                  <div style={{ marginTop: 6, color: 'var(--red)', fontSize: '0.8rem', wordBreak: 'break-word' }}>
+                    {pass.delivery_error}
+                  </div>
+                )}
+                {pass.delivery_status === 'failed' && (
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    style={{ marginTop: 8, color: 'var(--green)', fontSize: '0.8rem', padding: '2px 8px' }}
+                    onClick={handleRetryDelivery}
+                    disabled={retrying}
+                  >
+                    {retrying ? 'Retrying…' : '↻ Retry delivery'}
+                  </button>
+                )}
+              </div>
+            )}
+            {pass.community_app_sync && (
+              <div style={{ fontSize: '0.85rem' }}>
+                <span className="sub">Vaikuntham app</span>{' '}
+                <span className={`badge ${pass.community_app_sync.startsWith('sent') ? 'badge-used' : 'badge-revoked'}`}>
+                  {pass.community_app_sync.split(':')[0]}
+                </span>
+                {pass.community_app_sync.startsWith('failed') && (
+                  <div style={{ marginTop: 6, color: 'var(--red)', fontSize: '0.8rem', wordBreak: 'break-word' }}>
+                    {pass.community_app_sync.split(':').slice(1).join(':')}
+                  </div>
+                )}
               </div>
             )}
 
@@ -476,6 +518,12 @@ function AllPasses({ role }) {
   };
 
   useEffect(load, [q, status, eventId]);
+
+  // Poll every 30s so delivery status refreshes without a manual reload.
+  useEffect(() => {
+    const t = setInterval(load, 30000);
+    return () => clearInterval(t);
+  }, [q, status, eventId]);
 
   const pngName = (p) => `${p.donor_name.replace(/\s+/g, '-')}-pass.png`;
 

@@ -132,6 +132,8 @@ export const api = {
   eventCategories: (eventId) => request(`/api/events/${eventId}/categories`),
   updateDevoteeCategories: (eventId, categories) =>
     request(`/api/events/${eventId}/devotee-categories`, { method: 'PATCH', body: JSON.stringify({ categories }) }),
+  updateCommunityApp: (eventId, third_party_event_id) =>
+    request(`/api/events/${eventId}/community-app`, { method: 'PATCH', body: JSON.stringify({ third_party_event_id }) }),
 
   // Preacher-scoped views (main system, proxied).
   myHolders: (params) => request('/api/preachers/me/holders' + qs(params)),
@@ -151,6 +153,7 @@ export const api = {
   createPass: (body) => request('/api/passes', { method: 'POST', body: JSON.stringify(body) }),
   getPass: (id) => request(`/api/passes/${id}`),
   revoke: (id) => request(`/api/passes/${id}/revoke`, { method: 'POST' }),
+  retryDelivery: (id) => request(`/api/passes/${id}/retry-delivery`, { method: 'POST' }),
   venues: (eventCode) => request('/api/passes/venues' + qs({ event_code: eventCode })),
   categories: (eventCode) => request('/api/passes/categories' + qs({ event_code: eventCode })),
 

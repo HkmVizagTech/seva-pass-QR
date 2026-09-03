@@ -26,6 +26,16 @@ const passSchema = new mongoose.Schema(
     status: { type: String, enum: PASS_STATUSES, default: 'unused', index: true },
     // WhatsApp delivery tracking: 'pending' (not yet sent), 'sent', 'delivered', 'failed'.
     delivery_status: { type: String, enum: ['pending', 'sent', 'delivered', 'failed'], default: 'pending' },
+    // Delivery provider message id — used to match webhook delivery callbacks.
+    delivery_message_id: { type: String, default: '' },
+    // Delivery provider (e.g. 'gupshup').
+    delivery_provider: { type: String, default: '' },
+    // Latest delivery error (reason for failure), surfaced in the UI.
+    delivery_error: { type: String, default: '' },
+    // When the QR was last auto-sent.
+    delivered_at: { type: Date, default: null },
+    // Vaikuntham / community app push outcome.
+    community_app_sync: { type: String, default: '' },
     event_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Event', default: null, index: true },
     issued_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     // When admin issues a pass and assigns it to a preacher, store the preacher's

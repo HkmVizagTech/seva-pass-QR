@@ -8,10 +8,19 @@ import Event from '../models/Event.js';
 import User from '../models/User.js';
 import { isWhatsAppConfigured, sendPassQrWhatsApp } from '../services/whatsapp.js';
 import { isMainSystemConfigured, claimQr, fetchCategories, fetchVenues, MainSystemError, getQrPassDetails, batchGetQrPassDetails } from '../services/mainSystem.js';
+import { deliverPass } from '../services/deliverySweep.js';
 
 const router = Router();
 
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+
+// Whether the event has a Vaikuntham community-app id mapped (so community
+// push is possible even when the pass has no phone number).
+async function passHasCommunityApp(eventId) {
+  if (!eventId || !mongoose.isValidObjectId(eventId)) return false;
+  const ev = await Event.findById(eventId).lean();
+  return Boolean(ev?.third_party_event_id);
+}
 
 async function qrSvg(content) {
   try {
@@ -38,6 +47,8 @@ function serializePass(doc) {
     live_status: doc.live_status || null,
     redemption_history: doc.redemption_history || [],
     delivery_status: doc.delivery_status || 'pending',
+    delivery_error: doc.delivery_error || '',
+    community_app_sync: doc.community_app_sync || '',
     source: doc.source || 'local',
     recipient_id: doc.recipient_id || null,
     qr_token: doc.qr_token || '',
@@ -325,6 +336,17 @@ router.post('/', wrap(async (req, res) => {
       valid_until: valid_until || null,
     });
 
+    // Auto-deliver: send via Gupshup WhatsApp + push to the Vaikuntham
+    // community app. Best-effort — the pass is created regardless, and the
+    // background sweep retries pending/failed deliveries later.
+    if (phone.trim() || (await passHasCommunityApp(event_id))) {
+      try {
+        await deliverPass(await Pass.findById(pass._id));
+      } catch (err) {
+        console.error('[Passes] Auto-delivery failed:', err.message);
+      }
+    }
+
     return { pass: await serializePassWithQr(await loadPassById(pass._id), { includeImage: true }) };
   };
 
@@ -408,6 +430,23 @@ router.post('/:id/revoke', wrap(async (req, res) => {
   pass.status = 'revoked';
   await pass.save();
   res.json({ pass: await serializePassWithQr(await loadPassById(pass._id), { includeImage: true }) });
+}));
+
+// Retry auto-delivery (Gupshup WhatsApp + Vaikuntham community app) for a pass
+// that failed or was never delivered. Triggers the same pipeline as on-create.
+router.post('/:id/retry-delivery', wrap(async (req, res) => {
+  const pass = await Pass.findById(req.params.id);
+  if (!pass) {
+    return res.status(404).json({ error: 'Pass not found' });
+  }
+  if (assertOwnership(req, pass) === false) {
+    return res.status(403).json({ error: 'You do not have permission to retry this pass' });
+  }
+  if (pass.status === 'revoked') {
+    return res.status(400).json({ error: 'Cannot deliver a revoked pass' });
+  }
+  const result = await deliverPass(await Pass.findById(pass._id));
+  res.json({ ok: true, pass: await serializePassWithQr(await loadPassById(pass._id), { includeImage: true }), delivery: result });
 }));
 
 export default router;

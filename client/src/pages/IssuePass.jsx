@@ -393,6 +393,16 @@ export default function IssuePass() {
               <div className="sub" style={{ marginTop: 10 }}>
                 <CheckIcon size={13} /> Pass issued successfully
               </div>
+              {created.phone && created.delivery_status && (
+                <div style={{ marginTop: 8 }}>
+                  <span className={`badge ${created.delivery_status === 'sent' || created.delivery_status === 'delivered' ? 'badge-used' : created.delivery_status === 'failed' ? 'badge-revoked' : ''}`}>
+                    {created.delivery_status === 'sent' ? '✓ Sent via WhatsApp' : created.delivery_status === 'delivered' ? '✓ Delivered via WhatsApp' : created.delivery_status === 'failed' ? `WhatsApp failed` : 'WhatsApp pending'}
+                  </span>
+                  {created.delivery_status === 'failed' && created.delivery_error && (
+                    <div style={{ color: 'var(--red)', fontSize: '0.78rem', marginTop: 4 }}>{created.delivery_error}</div>
+                  )}
+                </div>
+              )}
             </div>
           ) : (
             <div className="muted" style={{ textAlign: 'center', padding: '30px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
