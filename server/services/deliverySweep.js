@@ -20,21 +20,30 @@ export async function deliverPass(pass) {
 
   const result = { whatsapp: null, community: null };
 
-  // 1. WhatsApp
-  if (pass.phone && isGupshupConfigured()) {
-    try {
-      const wa = await sendPassQrWhatsApp(pass, event);
-      pass.delivery_status = 'sent';
-      pass.delivery_provider = 'gupshup';
-      if (wa.messageId) pass.delivery_message_id = wa.messageId;
-      pass.delivery_error = '';
-      pass.delivered_at = new Date();
-      result.whatsapp = { success: true, messageId: wa.messageId };
-    } catch (err) {
+  // 1. WhatsApp — if a phone exists but Gupshup is not configured, record the
+  // reason explicitly instead of leaving the pass silently 'pending' forever.
+  if (pass.phone) {
+    if (!isGupshupConfigured()) {
       pass.delivery_status = 'failed';
       pass.delivery_provider = 'gupshup';
-      pass.delivery_error = err.message || 'WhatsApp send failed';
+      pass.delivery_error =
+        'Gupshup is not configured. Set GUPSHUP_ENABLED, GUPSHUP_API_KEY, GUPSHUP_SOURCE_NUMBER, GUPSHUP_APP_NAME and BACKEND_PUBLIC_URL in server/.env.';
       result.whatsapp = { success: false, error: pass.delivery_error };
+    } else {
+      try {
+        const wa = await sendPassQrWhatsApp(pass, event);
+        pass.delivery_status = 'sent';
+        pass.delivery_provider = 'gupshup';
+        if (wa.messageId) pass.delivery_message_id = wa.messageId;
+        pass.delivery_error = '';
+        pass.delivered_at = new Date();
+        result.whatsapp = { success: true, messageId: wa.messageId };
+      } catch (err) {
+        pass.delivery_status = 'failed';
+        pass.delivery_provider = 'gupshup';
+        pass.delivery_error = err.message || 'WhatsApp send failed';
+        result.whatsapp = { success: false, error: pass.delivery_error };
+      }
     }
   }
 

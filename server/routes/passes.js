@@ -41,6 +41,7 @@ function serializePass(doc) {
     phone: doc.phone,
     email: doc.email,
     pass_type: doc.pass_type,
+    category_code: doc.category_code || '',
     notes: doc.notes,
     qr_content: doc.qr_content,
     status: doc.status,
@@ -322,6 +323,9 @@ router.post('/', wrap(async (req, res) => {
       phone: phone.trim(),
       email: email.trim(),
       pass_type: passType,
+      // Keep the category CODE (e.g. SP / VL) so the community-app push can
+      // route to the right endpoint (seva-sponsor / store-qr-code).
+      category_code: (category || '').trim().toUpperCase(),
       notes: notes.trim(),
       qr_content: qrContent,
       source,

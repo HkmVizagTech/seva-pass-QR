@@ -24,7 +24,21 @@ export function isCommunityAppConfigured() {
 }
 
 const SPONSOR_CODES = new Set(['SP', 'DN', 'INV']);
-const VOLUNTEER_CODE = 'VL';
+const VOLUNTEER_CODES = new Set(['VL']);
+
+// The app stores category NAMES (e.g. "Sponsor", "Volunteer", "Invitee") as
+// pass.pass_type, while the main system also exposes a catCode (SP/DN/INV/VL).
+// Routing must accept BOTH forms — old passes have only the name, new passes
+// also carry category_code.
+function isVolunteerPass(passType, catCode) {
+  if (VOLUNTEER_CODES.has((catCode || '').trim().toUpperCase())) return true;
+  return /volunteer/i.test(passType || '');
+}
+
+function isSponsorPass(passType, catCode) {
+  if (SPONSOR_CODES.has((catCode || '').trim().toUpperCase())) return true;
+  return /sponsor|donor|invitee/i.test(passType || '');
+}
 
 function skipResult(reason) {
   return { attempted: false, skipped: true, success: false, reason };
@@ -64,13 +78,13 @@ export async function pushPassToCommunityApp({ pass, event, issuedBy }) {
   if (skip) return { ...skip, endpoint: 'skipped' };
   const eventId = event.third_party_event_id;
   const passType = (pass.pass_type || '').trim();
-  const upper = passType.toUpperCase();
+  const catCode = (pass.category_code || '').trim();
 
   try {
-    if (VOLUNTEER_CODE === upper) {
+    if (isVolunteerPass(passType, catCode)) {
       return await pushStoreQr({ pass, event, eventId });
     }
-    if (SPONSOR_CODES.has(upper)) {
+    if (isSponsorPass(passType, catCode)) {
       return await pushSponsor({ pass, event, eventId, issuedBy });
     }
     return await pushGeneral({ pass, event, eventId });
@@ -98,7 +112,16 @@ async function pushGeneral({ pass, event, eventId }) {
 
 async function pushSponsor({ pass, event, eventId, issuedBy }) {
   const passTypeMap = { SP: 'sponsor', DN: 'donor', INV: 'invitee' };
-  const passType = passTypeMap[(pass.pass_type || '').toUpperCase()] || 'donor';
+  const code = (pass.category_code || '').trim().toUpperCase();
+  const name = (pass.pass_type || '').toLowerCase();
+  // Resolve the seva type from the code first, then from the name.
+  let passType = passTypeMap[code];
+  if (!passType) {
+    if (name.includes('sponsor')) passType = 'sponsor';
+    else if (name.includes('invitee')) passType = 'invitee';
+    else if (name.includes('donor')) passType = 'donor';
+    else passType = 'donor';
+  }
   const sevaTypeMap = { sponsor: 'abhisekam', donor: 'darshan', invitee: 'darshan' };
 
   const preacherPhone = issuedBy?.phone ? bare10(issuedBy.phone) : bare10(pass.phone);

@@ -9,6 +9,11 @@ function ConfigureModal({ event, onClose, onSaved }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  // Vaikuntham community-app event id mapping (admin). When set, every pass
+  // issued for this event is auto-pushed to harekrishnavizag.co.in.
+  const [communityId, setCommunityId] = useState(event.third_party_event_id || '');
+  const [communitySaving, setCommunitySaving] = useState(false);
+  const [communityMsg, setCommunityMsg] = useState('');
 
   useEffect(() => {
     setLoading(true);
@@ -28,6 +33,20 @@ function ConfigureModal({ event, onClose, onSaved }) {
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, [event.id]);
+
+  const saveCommunityApp = async () => {
+    setCommunitySaving(true);
+    setCommunityMsg('');
+    try {
+      await api.updateCommunityApp(event.id, communityId.trim());
+      setCommunityMsg(communityId.trim() ? `Mapped to community app event ${communityId.trim()}. New passes for this event will be pushed there.` : 'Cleared — passes will not be pushed to the community app.');
+    } catch (e) {
+      setCommunityMsg('');
+      setError(e.message);
+    } finally {
+      setCommunitySaving(false);
+    }
+  };
 
   const toggle = (code) => setSelected((s) => ({ ...s, [code]: !s[code] }));
 
@@ -111,7 +130,28 @@ function ConfigureModal({ event, onClose, onSaved }) {
           </div>
         )}
         {error && <div className="alert alert-error">{error}</div>}
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+
+        {/* Vaikuntham community app mapping */}
+        <div style={{ marginTop: 18, paddingTop: 16, borderTop: '1px solid var(--border, #e2e8f0)' }}>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>Vaikuntham community app</div>
+          <p className="sub" style={{ marginTop: 0 }}>
+            When set, every pass issued for this event is auto-pushed to the Vaikuntham community app (harekrishnavizag.co.in). Leave empty to disable.
+          </p>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              value={communityId}
+              onChange={(e) => setCommunityId(e.target.value)}
+              placeholder="e.g. EVT-2026-JANMASTHAMI"
+              style={{ flex: 1, padding: '8px 10px', fontSize: '0.9rem', borderRadius: 8, border: '1px solid var(--border, #e2e8f0)' }}
+            />
+            <button className="btn btn-ghost btn-sm" onClick={saveCommunityApp} disabled={communitySaving}>
+              {communitySaving ? 'Saving…' : 'Save mapping'}
+            </button>
+          </div>
+          {communityMsg && <div className="sub" style={{ margin: '6px 0 0', color: 'var(--green, #1a7f37)' }}>{communityMsg}</div>}
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
           <button className="btn btn-ghost btn-sm" onClick={clearAll} disabled={saving}>
             Show all (clear restrictions)
           </button>

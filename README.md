@@ -91,6 +91,31 @@ How to get them:
 
 Until the env vars are set, the endpoint returns `501 WhatsApp is not configured`. To surface it in the UI later, add a "Send via WhatsApp" button in `client/src/pages/PassList.jsx` (it already has the donor's phone number).
 
+## Auto-send on issue (WhatsApp + Vaikuntham community app)
+
+When configured, every pass issued from the app is automatically delivered:
+
+1. **WhatsApp** — the recipient gets a template message with the styled QR image via Gupshup.
+2. **Vaikuntham community app** — the pass is pushed to `harekrishnavizag.co.in` so it shows up in the community app (requires the event to have a community-app id mapped in the **Events** page, and the server IP to be whitelisted there).
+
+Enable it in `server/.env`:
+
+```env
+# WhatsApp via Gupshup
+GUPSHUP_ENABLED=true
+GUPSHUP_API_KEY=<Gupshup API key>
+GUPSHUP_SOURCE_NUMBER=<registered WhatsApp number, e.g. 919000000000>
+GUPSHUP_APP_NAME=<app name the source number belongs to>
+GUPSHUP_TEMPLATE_ID=<approved template id>
+BACKEND_PUBLIC_URL=<public URL of this server, e.g. https://seva-pass-server-production.up.railway.app>
+
+# Vaikuntham community app sync
+THIRD_PARTY_SYNC_ENABLED=true
+THIRD_PARTY_API_URL=https://harekrishnavizag.co.in
+```
+
+Delivery status (`sent` / `failed`) shows on the pass card and in the pass list; failed deliveries can be retried with the "↻ Retry delivery" button, and a background sweep retries pending/failed passes every 5 minutes. Gupshup delivery callbacks arrive at `POST /api/webhooks/whatsapp` (verify token: `WEBHOOK_VERIFY_TOKEN`).
+
 ## Tests
 
 A full API smoke test runs against an in-memory MongoDB (downloads a mongod binary once):

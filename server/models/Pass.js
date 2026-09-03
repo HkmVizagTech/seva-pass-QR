@@ -12,6 +12,9 @@ const passSchema = new mongoose.Schema(
     // Pass types come from the selected event's categories on the main system
     // (e.g. Invitee, Sponsor, General Public), so no fixed allow-list.
     pass_type: { type: String, default: 'General' },
+    // Category code (e.g. SP / DN / INV / VL / GN) chosen from the event's
+    // categories. The Vaikuntham community-app push routes on this code.
+    category_code: { type: String, trim: true, uppercase: true, default: '' },
     notes: { type: String, trim: true, default: '' },
     qr_content: { type: String, required: true },
     // Where the QR came from: 'main-system' = claimed from the main Prasadam system,
