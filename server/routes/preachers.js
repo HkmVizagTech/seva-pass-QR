@@ -18,12 +18,13 @@ function requirePreacher(req, res, next) {
 // GET /api/preachers/me/holders?q=&category=&bahumana=&eventId=&page=&limit=
 // The preacher's own holders across all festivals, filtered server-side.
 router.get('/me/holders', requireAuth, requirePreacher, wrap(async (req, res) => {
-  const { q = '', category = '', bahumana = '', eventId = '', page = 1, limit = 20 } = req.query;
+  const { q = '', category = '', bahumana = '', eventId = '', eventCode = '', page = 1, limit = 20 } = req.query;
   const data = await preacherGetHolders(req.user.main_token, {
     search: q,
     category,
     bahumana,
     eventId,
+    eventCode,
     page,
     limit,
   });

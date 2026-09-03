@@ -314,7 +314,7 @@ function MyPasses() {
   const [q, setQ] = useState('');
   const [category, setCategory] = useState('');
   const [bahumana, setBahumana] = useState('');
-  const [eventId, setEventId] = useState('');
+  const [eventCode, setEventCode] = useState('');
   const [page, setPage] = useState(1);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -333,7 +333,7 @@ function MyPasses() {
     setLoading(true);
     setError('');
     api
-      .myHolders({ q, category, bahumana, eventId, page, limit: 20 })
+      .myHolders({ q, category, bahumana, eventCode, page, limit: 20 })
       .then((data) => {
         setHolders(data.holders || []);
         setPagination(data.pagination || { total: 0, page: 1, pages: 1 });
@@ -342,11 +342,11 @@ function MyPasses() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(load, [q, category, bahumana, eventId, page]);
+  useEffect(load, [q, category, bahumana, eventCode, page]);
 
   useEffect(() => {
     if (page !== 1) setPage(1);
-  }, [q, category, bahumana, eventId]);
+  }, [q, category, bahumana, eventCode]);
 
   const openQr = async (holder) => {
     const qrId = holder.qrPass?.qrId;
@@ -389,9 +389,9 @@ function MyPasses() {
           <option value="yes">Bahumana received</option>
           <option value="no">Not received</option>
         </select>
-        <select className="input" value={eventId} onChange={(e) => setEventId(e.target.value)}>
+        <select className="input" value={eventCode} onChange={(e) => setEventCode(e.target.value)}>
           <option value="">All events</option>
-          {events.map((ev) => <option key={ev.id} value={ev.id}>{ev.name}</option>)}
+          {events.map((ev) => <option key={ev.id} value={ev.event_code}>{ev.name}</option>)}
         </select>
       </div>
 
