@@ -4,7 +4,21 @@ import { preacherGetHolders, preacherGetStats, getMainApiUrl, getHolderScanHisto
 
 const router = Router();
 
-const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+// Any 401 coming back from the main system means the main-system token we
+// embedded at login is no longer accepted (expired, or the main system rotated
+// its signing secret). Surface it as a real 401 with a code so the client drops
+// the stored token and sends the user to the login screen, instead of showing
+// "session expired" forever while still holding a dead session.
+const wrap = (fn) => (req, res, next) =>
+  Promise.resolve(fn(req, res, next)).catch((err) => {
+    if (err && Number(err.status) === 401) {
+      return res.status(401).json({
+        error: 'Your main-site session has ended. Please log in again.',
+        code: 'MAIN_SESSION_EXPIRED',
+      });
+    }
+    next(err);
+  });
 
 // Only main-system devotee sessions may call these; the main-system
 // token was embedded in their app JWT at login time.

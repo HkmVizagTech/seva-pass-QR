@@ -75,6 +75,20 @@ function qs(params = {}) {
   return s ? `?${s}` : '';
 }
 
+// Login endpoints answer 401 for "wrong username or password". That is NOT an
+// expired session — the user has no session yet. Blanket-treating every 401 as
+// an expiry is why a plain bad password showed up as "Session expired".
+const LOGIN_PATHS = ['/api/auth/login', '/api/auth/preacher-login'];
+const isLoginPath = (path) => LOGIN_PATHS.some((p) => path.startsWith(p));
+
+// Fired when the server tells us the stored session is dead, so the shell can
+// drop the user on the login screen instead of leaving them on a broken page.
+function announceSessionExpired(message) {
+  try {
+    window.dispatchEvent(new CustomEvent('seva:session-expired', { detail: { message } }));
+  } catch {}
+}
+
 async function request(path, options = {}) {
   const headers = { ...(options.headers || {}) };
   const token = getToken();
@@ -91,17 +105,15 @@ async function request(path, options = {}) {
     throw new Error('Cannot reach the server. Check your internet connection and try again.');
   }
 
-  if (res.status === 401) {
-    clearToken();
-    throw new Error('Session expired. Please log in again.');
-  }
-
   const raw = await res.text();
   let data = {};
   if (raw.trim()) {
     try {
       data = JSON.parse(raw);
     } catch {
+      if (res.status === 429) {
+        throw new Error('Too many attempts right now. Please wait a minute and try again.');
+      }
       // Not JSON — almost always means the request never reached the API
       // (wrong base URL, offline proxy, or the app shell answering instead).
       throw new Error(
@@ -109,6 +121,23 @@ async function request(path, options = {}) {
       );
     }
   }
+
+  if (res.status === 401) {
+    if (isLoginPath(path)) {
+      // Bad credentials — keep whatever the server actually said.
+      throw new Error(data.error || 'Invalid email/username or password.');
+    }
+    // A real expiry: drop the dead token so the next login can succeed.
+    const message = data.error || 'Your session has ended. Please log in again.';
+    clearToken();
+    announceSessionExpired(message);
+    throw new Error(message);
+  }
+
+  if (res.status === 429) {
+    throw new Error(data.error || 'Too many attempts right now. Please wait a minute and try again.');
+  }
+
   if (!res.ok) throw new Error(data.error || `Request failed (HTTP ${res.status})`);
   return data;
 }

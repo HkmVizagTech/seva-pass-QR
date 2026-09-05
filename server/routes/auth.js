@@ -5,7 +5,7 @@ import mongoose from 'mongoose';
 import rateLimit from 'express-rate-limit';
 import User from '../models/User.js';
 import Pass from '../models/Pass.js';
-import { requireAuth, signToken, publicUser } from '../auth.js';
+import { requireAuth, signToken, publicUser, sessionTtlForMainToken } from '../auth.js';
 import {
   preacherLogin,
   MainSystemError,
@@ -78,6 +78,17 @@ router.post('/preacher-login', loginLimiter, wrap(async (req, res) => {
   const preacher = data.preacher || {};
   const preacherRole = preacher.role || 'devotee';
 
+  // The whole app session hangs off this token — every "My Passes" call is
+  // proxied to the main system with it. If the main system stops returning one
+  // (renamed field, changed response shape) we must fail here with a clear
+  // message rather than mint a session that 401s on its very first request.
+  const mainToken = data.token || data.accessToken || data?.data?.token || '';
+  if (!mainToken) {
+    return res.status(502).json({
+      error: 'The main site accepted your login but did not return a session token. Please try again or contact support.',
+    });
+  }
+
   // Find or create a local User so issued_by in passes points to a valid
   // local ObjectId.  The short_code links the local user to the main-system
   // preacher, and the main_system_id lets us resolve the mapping later.
@@ -118,7 +129,9 @@ router.post('/preacher-login', loginLimiter, wrap(async (req, res) => {
       name: preacher.name || preacher.shortCode || localUser.name || '',
       role: preacherRole,
     },
-    { shortCode: preacher.shortCode || '', main_token: data.token }
+    { shortCode: preacher.shortCode || '', main_token: mainToken },
+    // Never let the app session outlive the main-system token inside it.
+    { expiresIn: sessionTtlForMainToken(mainToken) }
   );
   res.json({
     token,

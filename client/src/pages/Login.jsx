@@ -21,33 +21,30 @@ export default function Login() {
         return;
       }
       const isEmail = val.includes('@');
-      if (isEmail) {
-        // Email → try main system first, then local fallback
+      // Try the most likely account type first, then the other one. Whichever
+      // attempt matched the input shape owns the error message the user sees —
+      // previously the fallback attempt's error overwrote the real reason.
+      const attempts = isEmail
+        ? [() => api.preacherLogin({ email: val, password }), () => api.login(val, password)]
+        : [() => api.login(val, password), () => api.preacherLogin({ email: val, password })];
+
+      let primaryError = null;
+      for (const attempt of attempts) {
         try {
-          const { token } = await api.preacherLogin({ email: val, password });
+          const { token } = await attempt();
           setToken(token);
           navigate('/');
           return;
-        } catch {
-          // Main system rejected — try local
+        } catch (err) {
+          if (!primaryError) primaryError = err;
+          // A server/network problem won't be fixed by trying the other login
+          // route — report it straight away instead of masking it.
+          if (/cannot reach the server|unexpected reply|too many attempts/i.test(err.message || '')) {
+            throw err;
+          }
         }
-        const { token } = await api.login(val, password);
-        setToken(token);
-        navigate('/');
-      } else {
-        // Username → try local first, then main system
-        try {
-          const { token } = await api.login(val, password);
-          setToken(token);
-          navigate('/');
-          return;
-        } catch {
-          // Local rejected — try main system (user might have entered email without @)
-        }
-        const { token } = await api.preacherLogin({ email: val, password });
-        setToken(token);
-        navigate('/');
       }
+      throw primaryError || new Error('Login failed. Please try again.');
     } catch (err) {
       setError(err.message);
     } finally {

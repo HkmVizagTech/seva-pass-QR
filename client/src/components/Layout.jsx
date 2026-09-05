@@ -44,6 +44,18 @@ export default function Layout() {
       });
   }, []);
 
+  // Any request that comes back with a dead session sends the user to the login
+  // screen right away, instead of stranding them on a page that only shows
+  // "session expired" while the app still thinks they are logged in.
+  useEffect(() => {
+    const onExpired = () => {
+      clearToken();
+      navigate('/login', { replace: true });
+    };
+    window.addEventListener('seva:session-expired', onExpired);
+    return () => window.removeEventListener('seva:session-expired', onExpired);
+  }, [navigate]);
+
   const logout = () => {
     clearToken();
     navigate('/login');
